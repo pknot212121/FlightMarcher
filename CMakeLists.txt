@@ -6,17 +6,18 @@ project(App LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 
+set(FETCHCONTENT_QUIET OFF)
+
 include(FetchContent)
 
 set(DAWN_FETCH_DEPENDENCIES ON)
-set(DAWN_BUILD_SAMPLES OFF)
-set(BUILD_SAMPLES OFF)
 
 FetchContent_Declare(
     dawn
     GIT_REPOSITORY https://github.com/google/dawn.git
     GIT_TAG        v20260720.160313
     GIT_SHALLOW    TRUE
+    GIT_SUBMODULES ""
 )
 
 FetchContent_MakeAvailable(dawn)
