@@ -234,14 +234,14 @@ inline bool loadGeometryFromObj(const fs::path& path, std::vector<VertexAttribut
 
             vertexData[offset + i].position = {
                 attrib.vertices[3 * idx.vertex_index + 0],
-                attrib.vertices[3 * idx.vertex_index + 1],
-                attrib.vertices[3 * idx.vertex_index + 2]
+                -attrib.vertices[3 * idx.vertex_index + 2],
+                attrib.vertices[3 * idx.vertex_index + 1]
             };
 
             vertexData[offset + i].normal = {
                 attrib.normals[3 * idx.normal_index + 0],
-                attrib.normals[3 * idx.normal_index + 1],
-                attrib.normals[3 * idx.normal_index + 2]
+                -attrib.normals[3 * idx.normal_index + 2],
+                attrib.normals[3 * idx.normal_index + 1]
             };
 
             vertexData[offset + i].color = {

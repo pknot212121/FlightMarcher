@@ -4,7 +4,7 @@ void Application::initializeBuffers()
 {
 
     std::vector<VertexAttributes> vertexData;
-    bool success = loadGeometryFromObj(RESOURCE_DIR "/pyramid.obj", vertexData);
+    bool success = loadGeometryFromObj(RESOURCE_DIR "/mammoth.obj", vertexData);
     assert(success);
 
     pointBuffer = createBuffer(device, "vertex_buffer", vertexData.size() * sizeof(VertexAttributes), wgpu::BufferUsage::Vertex);
