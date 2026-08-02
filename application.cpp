@@ -1,4 +1,6 @@
 #include "application.h"
+#include "glm/ext/matrix_clip_space.hpp"
+#include "glm/ext/matrix_float4x4.hpp"
 #include <cstddef>
 #include <memory>
 
@@ -23,10 +25,28 @@ void Application::initializeBuffers()
     device.GetLimits(&limits);
     
     mainUniforms.init(device);
+
+    vec3 focalPoint(0.0, 0.0, -2.0);
+    float angle2 = 3.0f * PI / 4.0f;
+    float focalLength = 2.0;
+    float fov = 2 * glm::atan(1 / focalLength);
+
+    mat4x4 M(1.0);
+    M = glm::rotate(M, 0.0f, vec3(0.0, 0.0, 1.0));
+    M = glm::translate(M, vec3(0.5, 0.0, 0.0));
+    M = glm::scale(M, vec3(0.3f));
+
+    mat4x4 V(1.0);
+    V = glm::translate(V, -focalPoint);
+    V = glm::rotate(V, -angle2, vec3(1.0, 0.0, 0.0));
+    mat4x4 P = glm::perspective(fov, 1.0f, 0.01f, 100.0f);
+    
+
     MyUniforms uniformValues {
+        .projectionMatrix = P,
+        .viewMatrix = V,
+        .modelMatrix = M,
         .color = {0.0f, 1.0f, 0.4f, 1.0f},
-        .scale = {1.0f, 1.0f},
-        .offset = {-0.5f, 0.0f},
         .time = 0,
     };
     mainUniforms.update(device.GetQueue(), uniformValues);
@@ -142,6 +162,11 @@ void Application::mainLoop()
         backbufferView.SetLabel("Back buffer Texture View");
         float time = static_cast<float>(glfwGetTime());
         mainUniforms.updateField(device.GetQueue(), offsetof(MyUniforms, time), &time, sizeof(float));
+        mat4x4 M(1.0);
+        M = glm::rotate(M, time, vec3(0.0, 0.0, 1.0));
+        M = glm::translate(M, vec3(0.5, 0.0, 0.0));
+        M = glm::scale(M, vec3(0.3f));
+        mainUniforms.updateField(device.GetQueue(), offsetof(MyUniforms, modelMatrix), &M, sizeof(mat4x4));
         wgpu::RenderPassColorAttachment attachment {
             .view = backbufferView,
             .loadOp = wgpu::LoadOp::Clear,
