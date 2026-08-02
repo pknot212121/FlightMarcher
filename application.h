@@ -1,11 +1,8 @@
 #include <cassert>
-#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <stdint.h>
-#include <iostream>
 #include <GLFW/glfw3.h>
-#include <vector>
 #include <webgpu/webgpu_cpp.h>
 #include <dawn/webgpu_cpp_print.h>
 #include <webgpu/webgpu_glfw.h>
@@ -44,11 +41,9 @@ class Application
         wgpu::Adapter adapter;
         wgpu::Device device;
         wgpu::RenderPipeline pipeline;
-        wgpu::Buffer uniformBuffer;
         wgpu::Buffer pointBuffer;
         wgpu::Buffer indexBuffer;
         uint32_t indexCount;
-        wgpu::BindGroup bindGroup;
-        uint32_t uniformStride;
         std::unique_ptr<DepthManager> depthManager;
+        UniformGroup<MyUniforms> mainUniforms;
 };

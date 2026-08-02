@@ -89,15 +89,99 @@ class DepthManager
                 .stencilStoreOp = wgpu::StoreOp::Undefined,
                 .stencilClearValue = 0,
             };
+
+            depthStencilState = {
+                .format = depthTextureFormat,
+                .depthWriteEnabled = true,
+                .depthCompare = wgpu::CompareFunction::Less,
+                .stencilReadMask = 0,
+                .stencilWriteMask = 0,
+            };
         }
         const wgpu::RenderPassDepthStencilAttachment* getDepthAttachment() const
         {
             return &depthAttachment;
         }
+        const wgpu::DepthStencilState* getDepthStencilState() const
+        {
+            return &depthStencilState;
+        }
     private:
         wgpu::RenderPassDepthStencilAttachment depthAttachment;
         wgpu::TextureView depthTextureView;
         wgpu::Texture depthTexture;
+        wgpu::DepthStencilState depthStencilState;
+};
+
+template <typename T>
+class UniformGroup
+{
+    public:
+        void init(  wgpu::Device device,
+                    wgpu::ShaderStage visibility = wgpu::ShaderStage::Vertex | wgpu::ShaderStage::Fragment,
+                    uint32_t bindingSlot = 0 )
+        {
+            wgpu::BufferDescriptor bufferDesc {
+                .label = "Uniform buffer",
+                .usage = wgpu::BufferUsage::Uniform | wgpu::BufferUsage::CopyDst,
+                .size = sizeof(T),
+            };
+            buffer = device.CreateBuffer(&bufferDesc);
+
+            wgpu::BindGroupLayoutEntry layoutEntry {
+                .binding = bindingSlot,
+                .visibility = visibility,
+                .buffer = {
+                    .type = wgpu::BufferBindingType::Uniform,
+                    .minBindingSize = sizeof(T),
+                }
+            };
+
+            wgpu::BindGroupLayoutDescriptor layoutDesc {
+                .entryCount = 1,
+                .entries = &layoutEntry,
+            };
+            layout = device.CreateBindGroupLayout(&layoutDesc);
+
+            wgpu::BindGroupEntry groupEntry {
+                .binding = bindingSlot,
+                .buffer = buffer,
+                .offset = 0,
+                .size = sizeof(T),
+            };
+
+            wgpu::BindGroupDescriptor groupDesc {
+                .layout = layout,
+                .entryCount = 1,
+                .entries = &groupEntry,
+            };
+            bindGroup = device.CreateBindGroup(&groupDesc);
+        }
+
+        void update(wgpu::Queue queue, const T& data)
+        {
+            queue.WriteBuffer(buffer, 0, &data, sizeof(T));
+        }
+
+        void updateField(wgpu::Queue queue, uint64_t offset, const void* data, uint64_t size)
+        {
+            queue.WriteBuffer(buffer, offset, data, size);
+        }
+
+        void bind(wgpu::RenderPassEncoder pass, uint32_t groupIndex = 0) const
+        {
+            pass.SetBindGroup(groupIndex, bindGroup);
+        }
+
+        wgpu::BindGroupLayout getLayout() const
+        {
+            return layout;
+        }
+        
+    private:
+        wgpu::Buffer buffer;
+        wgpu::BindGroupLayout layout;
+        wgpu::BindGroup bindGroup;
 };
 
 

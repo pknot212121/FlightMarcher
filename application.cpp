@@ -1,4 +1,5 @@
 #include "application.h"
+#include <cstddef>
 #include <memory>
 
 
@@ -20,16 +21,15 @@ void Application::initializeBuffers()
 
     wgpu::Limits limits;
     device.GetLimits(&limits);
-    uniformStride = ceilToNextMultiple((uint32_t)sizeof(MyUniforms), (uint32_t)limits.minUniformBufferOffsetAlignment);
-
-    MyUniforms uniforms {
+    
+    mainUniforms.init(device);
+    MyUniforms uniformValues {
         .color = {0.0f, 1.0f, 0.4f, 1.0f},
         .scale = {1.0f, 1.0f},
         .offset = {-0.5f, 0.0f},
         .time = 0,
     };
-    uniformBuffer = createBuffer(device, "uniform_buffer", uniformStride + sizeof(MyUniforms), wgpu::BufferUsage::Uniform);
-    device.GetQueue().WriteBuffer(uniformBuffer, 0, &uniforms, sizeof(MyUniforms));
+    mainUniforms.update(device.GetQueue(), uniformValues);
 }
 
 void Application::initializePipeline()
@@ -37,46 +37,12 @@ void Application::initializePipeline()
     assert(surfaceFormat);
     assert(pointBuffer);
     assert(indexBuffer);
-    assert(uniformBuffer);
     auto shader = loadShaderModule(RESOURCE_DIR "/shader.wgsl", device);
     assert(shader);
     wgpu::ColorTargetState target{.format = surfaceFormat,};
 
     DynamicVertexLayout vertexLayout({3, 3});
-
-    /*---- UNIFORMS / BIND GROUPS ----*/
-
-    wgpu::BindGroupLayout bindGroupLayout;
-    wgpu::BindGroupLayoutEntry bindingLayout {
-        .binding = 0,
-        .visibility = wgpu::ShaderStage::Vertex | wgpu::ShaderStage::Fragment,
-        .buffer = {
-            .type = wgpu::BufferBindingType::Uniform,
-            .minBindingSize = sizeof(MyUniforms),
-        }
-    };
-
-    wgpu::BindGroupLayoutDescriptor bindGroupLayoutDesc {
-        .entryCount = 1,
-        .entries = &bindingLayout,
-    };
-    bindGroupLayout = device.CreateBindGroupLayout(&bindGroupLayoutDesc);
-    
-    wgpu::BindGroupEntry binding {
-        .binding = 0,
-        .buffer = uniformBuffer,
-        .offset = 0,
-        .size = sizeof(MyUniforms),
-    };
-
-    wgpu::BindGroupDescriptor bindGroupDesc {
-        .layout = bindGroupLayout,
-        .entryCount = 1,
-        .entries = &binding,
-    };
-    bindGroup = device.CreateBindGroup(&bindGroupDesc);
-
-    /*-------------- PIPELINE ------------*/
+    depthManager = std::make_unique<DepthManager>(depthTextureFormat, device, kWidth, kHeight);
 
     wgpu::FragmentState fragState {
         .module = shader,
@@ -86,14 +52,7 @@ void Application::initializePipeline()
         .targets = &target,
     };
 
-    wgpu::DepthStencilState depthStencilState {
-        .format = depthTextureFormat,
-        .depthWriteEnabled = true,
-        .depthCompare = wgpu::CompareFunction::Less,
-        .stencilReadMask = 0,
-        .stencilWriteMask = 0,
-    };
-
+    wgpu::BindGroupLayout bindGroupLayout = mainUniforms.getLayout();
     wgpu::PipelineLayoutDescriptor layoutDesc {
         .bindGroupLayoutCount = 1,
         .bindGroupLayouts = (wgpu::BindGroupLayout*)&bindGroupLayout,
@@ -110,7 +69,7 @@ void Application::initializePipeline()
             .bufferCount = 1,
             .buffers = vertexLayout.getLayout(),
         },
-        .depthStencil = &depthStencilState,
+        .depthStencil = depthManager->getDepthStencilState(),
         .fragment = &fragState,
     };
     pipeline = device.CreateRenderPipeline(&pipelineDesc);
@@ -162,15 +121,12 @@ bool Application::initialize()
 
     initializeBuffers();
     initializePipeline();
-    depthManager = std::make_unique<DepthManager>(depthTextureFormat, device, kWidth, kHeight);
     return true;
 }
 
 void Application::mainLoop()
 {
     assert(device);
-    assert(uniformBuffer);
-    assert(bindGroup);
     assert(pipeline);
 
     while (!glfwWindowShouldClose(window))
@@ -185,7 +141,7 @@ void Application::mainLoop()
         auto backbufferView = surfaceTexture.texture.CreateView();
         backbufferView.SetLabel("Back buffer Texture View");
         float time = static_cast<float>(glfwGetTime());
-        device.GetQueue().WriteBuffer(uniformBuffer, offsetof(MyUniforms,time), &time, sizeof(float));
+        mainUniforms.updateField(device.GetQueue(), offsetof(MyUniforms, time), &time, sizeof(float));
         wgpu::RenderPassColorAttachment attachment {
             .view = backbufferView,
             .loadOp = wgpu::LoadOp::Clear,
@@ -202,14 +158,12 @@ void Application::mainLoop()
 
         auto pass = encoder.BeginRenderPass(&renderPass);
         pass.SetPipeline(pipeline);
-        uint32_t dynamicOffset = 0;
         pass.SetVertexBuffer(0, pointBuffer, 0, pointBuffer.GetSize());
         pass.SetIndexBuffer(indexBuffer, wgpu::IndexFormat::Uint16, 0, indexBuffer.GetSize());
-
-        pass.SetBindGroup(0, bindGroup, 0);
+        mainUniforms.bind(pass);
         pass.DrawIndexed(indexCount);
-
         pass.End();
+
         auto commands = encoder.Finish();
         device.GetQueue().Submit(1, &commands);
         surface.Present();
