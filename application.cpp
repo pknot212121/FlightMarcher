@@ -1,16 +1,11 @@
 #include "application.h"
-#include "glm/ext/matrix_clip_space.hpp"
-#include "glm/ext/matrix_float4x4.hpp"
-#include <cstddef>
-#include <memory>
-
 
 void Application::initializeBuffers()
 {
     std::vector<float> pointData;
     std::vector<uint16_t> indexData;
 
-    bool success = loadGeometry(RESOURCE_DIR "/pyramid.txt", pointData, indexData, 3);
+    bool success = loadGeometry(RESOURCE_DIR "/pyramid.txt", pointData, indexData, 6);
     assert(success);
 
     indexData.resize((indexData.size() + 1) & ~1);
@@ -40,7 +35,6 @@ void Application::initializeBuffers()
     V = glm::translate(V, -focalPoint);
     V = glm::rotate(V, -angle2, vec3(1.0, 0.0, 0.0));
     mat4x4 P = glm::perspective(fov, 1.0f, 0.01f, 100.0f);
-    
 
     MyUniforms uniformValues {
         .projectionMatrix = P,
@@ -61,7 +55,7 @@ void Application::initializePipeline()
     assert(shader);
     wgpu::ColorTargetState target{.format = surfaceFormat,};
 
-    DynamicVertexLayout vertexLayout({3, 3});
+    DynamicVertexLayout vertexLayout({3, 3, 3});
     depthManager = std::make_unique<DepthManager>(depthTextureFormat, device, kWidth, kHeight);
 
     wgpu::FragmentState fragState {
@@ -171,7 +165,7 @@ void Application::mainLoop()
             .view = backbufferView,
             .loadOp = wgpu::LoadOp::Clear,
             .storeOp = wgpu::StoreOp::Store,
-            .clearValue = {0., 0., 0., 1.},
+            .clearValue = {0.2, 0.2, 0.2, 1.},
         };
 
         wgpu::RenderPassDescriptor renderPass {

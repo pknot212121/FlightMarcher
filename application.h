@@ -1,12 +1,10 @@
 #include <cassert>
 #include <cstdint>
 #include <memory>
-#include <stdint.h>
 #include <GLFW/glfw3.h>
 #include <webgpu/webgpu_cpp.h>
 #include <dawn/webgpu_cpp_print.h>
 #include <webgpu/webgpu_glfw.h>
-#include "glm/ext/matrix_float4x4.hpp"
 #include "misc.h"
 #include <glm/glm.hpp>
 #include <glm/ext.hpp>
