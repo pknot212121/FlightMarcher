@@ -1,3 +1,4 @@
+#include <numeric>
 #include <webgpu/webgpu_cpp.h>
 #include <cassert>
 #include <cstddef>
@@ -7,14 +8,21 @@
 #include <string_view>
 #include <webgpu/webgpu.h>
 #include <vector>
-
 #include <filesystem>
 #include <fstream>
 #include <sstream>
 #include <string>
 #include <initializer_list>
 #include <stdexcept>
+#include <tiny_obj_loader.h>
+#include <glm/glm.hpp>
+#include <glm/ext.hpp>
 
+using glm::mat4x4;
+using glm::vec4;
+using glm::vec3;
+
+namespace fs = std::filesystem;
 
 class DynamicVertexLayout 
 {
@@ -177,13 +185,75 @@ class UniformGroup
         {
             return layout;
         }
-        
+
     private:
         wgpu::Buffer buffer;
         wgpu::BindGroupLayout layout;
         wgpu::BindGroup bindGroup;
 };
 
+struct VertexAttributes
+{
+    vec3 position;
+    vec3 normal;
+    vec3 color;
+};
+
+inline bool loadGeometryFromObj(const fs::path& path, std::vector<VertexAttributes>& vertexData) {
+    tinyobj::ObjReader reader;
+    tinyobj::ObjReaderConfig readerConfig;
+    readerConfig.triangulate = true;
+
+    if (!reader.ParseFromFile(path.string(), readerConfig))
+    {
+        if (!reader.Error().empty())
+        {
+            std::cerr << "TinyObjReader Error: " << reader.Error() << std::endl;
+        }
+        return false;
+    }
+
+    if (!reader.Warning().empty())
+    {
+        std::cout << "TinyObjReader Warning: " << reader.Warning() << std::endl;
+    }
+
+    const auto& attrib = reader.GetAttrib();
+    const auto& shapes = reader.GetShapes();
+    
+    size_t offset = std::accumulate(shapes.begin(), shapes.end(), 0, []
+        (size_t total, auto& shape){return total + shape.mesh.indices.size();});
+    vertexData.resize(offset);
+
+    offset = 0;
+    for (const auto& shape : shapes)
+    {
+        for (size_t i = 0; i < shape.mesh.indices.size(); i++)
+        {
+            const tinyobj::index_t& idx = shape.mesh.indices[i];
+
+            vertexData[offset + i].position = {
+                attrib.vertices[3 * idx.vertex_index + 0],
+                attrib.vertices[3 * idx.vertex_index + 1],
+                attrib.vertices[3 * idx.vertex_index + 2]
+            };
+
+            vertexData[offset + i].normal = {
+                attrib.normals[3 * idx.normal_index + 0],
+                attrib.normals[3 * idx.normal_index + 1],
+                attrib.normals[3 * idx.normal_index + 2]
+            };
+
+            vertexData[offset + i].color = {
+                attrib.colors[3 * idx.vertex_index + 0],
+                attrib.colors[3 * idx.vertex_index + 1],
+                attrib.colors[3 * idx.vertex_index + 2]
+            };
+        }
+        offset += shape.mesh.indices.size();
+    }
+    return true;
+}
 
 inline bool loadGeometry(const std::filesystem::path& path, std::vector<float>& pointData, std::vector<uint16_t>& indexData, int dimensions)
 {

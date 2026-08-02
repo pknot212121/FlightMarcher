@@ -2,20 +2,14 @@
 
 void Application::initializeBuffers()
 {
-    std::vector<float> pointData;
-    std::vector<uint16_t> indexData;
 
-    bool success = loadGeometry(RESOURCE_DIR "/pyramid.txt", pointData, indexData, 6);
+    std::vector<VertexAttributes> vertexData;
+    bool success = loadGeometryFromObj(RESOURCE_DIR "/pyramid.obj", vertexData);
     assert(success);
 
-    indexData.resize((indexData.size() + 1) & ~1);
-    indexCount = static_cast<uint32_t>(indexData.size());
-    pointBuffer = createBuffer(device, "vertex_buffer", pointData.size() * sizeof(float), wgpu::BufferUsage::Vertex);
-    device.GetQueue().WriteBuffer(pointBuffer, 0, pointData.data(), pointData.size() * sizeof(float));
-
-    indexBuffer = createBuffer(device, "index_buffer", (indexData.size() * sizeof(uint16_t) + 3) & ~3, wgpu::BufferUsage::Index);
-    device.GetQueue().WriteBuffer(indexBuffer, 0,indexData.data(), (indexData.size() * sizeof(uint16_t) + 3) & ~3);
-
+    pointBuffer = createBuffer(device, "vertex_buffer", vertexData.size() * sizeof(VertexAttributes), wgpu::BufferUsage::Vertex);
+    device.GetQueue().WriteBuffer(pointBuffer, 0, vertexData.data(), vertexData.size() * sizeof(VertexAttributes));
+    vertexCount = static_cast<int32_t>(vertexData.size());
     wgpu::Limits limits;
     device.GetLimits(&limits);
     
@@ -50,7 +44,6 @@ void Application::initializePipeline()
 {
     assert(surfaceFormat);
     assert(pointBuffer);
-    assert(indexBuffer);
     auto shader = loadShaderModule(RESOURCE_DIR "/shader.wgsl", device);
     assert(shader);
     wgpu::ColorTargetState target{.format = surfaceFormat,};
@@ -178,9 +171,8 @@ void Application::mainLoop()
         auto pass = encoder.BeginRenderPass(&renderPass);
         pass.SetPipeline(pipeline);
         pass.SetVertexBuffer(0, pointBuffer, 0, pointBuffer.GetSize());
-        pass.SetIndexBuffer(indexBuffer, wgpu::IndexFormat::Uint16, 0, indexBuffer.GetSize());
         mainUniforms.bind(pass);
-        pass.DrawIndexed(indexCount);
+        pass.Draw(vertexCount, 1, 0, 0);
         pass.End();
 
         auto commands = encoder.Finish();
@@ -194,7 +186,6 @@ void Application::terminate()
     surface.Unconfigure();
     surface = nullptr;
     device.Destroy();
-    indexBuffer.Destroy();
     pointBuffer.Destroy();
     glfwDestroyWindow(window);
     glfwTerminate();

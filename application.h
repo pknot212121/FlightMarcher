@@ -1,22 +1,14 @@
-#include <cassert>
-#include <cstdint>
 #include <memory>
 #include <GLFW/glfw3.h>
 #include <webgpu/webgpu_cpp.h>
 #include <dawn/webgpu_cpp_print.h>
 #include <webgpu/webgpu_glfw.h>
 #include "misc.h"
-#include <glm/glm.hpp>
-#include <glm/ext.hpp>
 
 constexpr float PI = 3.14159265358979323846f;
 constexpr uint32_t kWidth = 512;
 constexpr uint32_t kHeight = 512;
 constexpr wgpu::TextureFormat depthTextureFormat = wgpu::TextureFormat::Depth24Plus;
-
-using glm::mat4x4;
-using glm::vec4;
-using glm::vec3;
 
 class Application
 {
@@ -47,8 +39,7 @@ class Application
         wgpu::Device device;
         wgpu::RenderPipeline pipeline;
         wgpu::Buffer pointBuffer;
-        wgpu::Buffer indexBuffer;
-        uint32_t indexCount;
+        int32_t vertexCount = 0;
         std::unique_ptr<DepthManager> depthManager;
         UniformGroup<MyUniforms> mainUniforms;
 };

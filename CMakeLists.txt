@@ -26,14 +26,27 @@ FetchContent_Declare(
     GIT_TAG         1.0.1
 )
 
+FetchContent_Declare(
+    tinyobjloader
+    GIT_REPOSITORY  https://github.com/tinyobjloader/tinyobjloader.git
+    GIT_TAG         v2.0.0rc13
+)
+
 FetchContent_MakeAvailable(dawn)
 FetchContent_MakeAvailable(glm)
+FetchContent_MakeAvailable(tinyobjloader)
 
 add_executable(App "main.cpp"
     misc.h
     application.h
     application.cpp)
-target_link_libraries(App PRIVATE webgpu_dawn webgpu_glfw glfw glm::glm)
+    
+target_link_libraries(App PRIVATE 
+    webgpu_dawn
+    webgpu_glfw
+    glfw
+    glm::glm
+    tinyobjloader)
 
 target_compile_definitions(
     App PRIVATE
