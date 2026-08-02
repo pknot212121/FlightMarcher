@@ -20,16 +20,25 @@ FetchContent_Declare(
     GIT_SUBMODULES ""
 )
 
+FetchContent_Declare(
+    glm
+    GIT_REPOSITORY  https://github.com/g-truc/glm.git
+    GIT_TAG         1.0.1
+)
+
 FetchContent_MakeAvailable(dawn)
+FetchContent_MakeAvailable(glm)
 
 add_executable(App "main.cpp"
     misc.h
     application.h
     application.cpp)
-target_link_libraries(App PRIVATE webgpu_dawn webgpu_glfw glfw)
+target_link_libraries(App PRIVATE webgpu_dawn webgpu_glfw glfw glm::glm)
 
 target_compile_definitions(
     App PRIVATE
     RESOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/resources"
+    GLM_FORCE_DEPTH_ZERO_TO_ONE
+    GLM_FORCE_LEFT_HANDED
 )
 

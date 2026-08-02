@@ -1,4 +1,5 @@
 #include "application.h"
+#include <memory>
 
 
 void Application::initializeBuffers()
@@ -41,25 +42,7 @@ void Application::initializePipeline()
     assert(shader);
     wgpu::ColorTargetState target{.format = surfaceFormat,};
 
-    /*---- VERTEX ATTRIBUTES ----*/
-
-    std::vector<wgpu::VertexAttribute> vertexAttribs(2);
-    vertexAttribs[0] = {
-        .format = wgpu::VertexFormat::Float32x3,
-        .offset = 0,
-        .shaderLocation = 0,
-    };
-    vertexAttribs[1] = {
-        .format = wgpu::VertexFormat::Float32x3,
-        .offset = 3 * sizeof(float),
-        .shaderLocation = 1,
-    };
-    wgpu::VertexBufferLayout vertexBufferLayout {
-        .stepMode = wgpu::VertexStepMode::Vertex,
-        .arrayStride = 6 * sizeof(float),
-        .attributeCount = static_cast<uint32_t>(vertexAttribs.size()),
-        .attributes = vertexAttribs.data()
-    };
+    DynamicVertexLayout vertexLayout({3, 3});
 
     /*---- UNIFORMS / BIND GROUPS ----*/
 
@@ -69,7 +52,6 @@ void Application::initializePipeline()
         .visibility = wgpu::ShaderStage::Vertex | wgpu::ShaderStage::Fragment,
         .buffer = {
             .type = wgpu::BufferBindingType::Uniform,
-            .hasDynamicOffset = true,
             .minBindingSize = sizeof(MyUniforms),
         }
     };
@@ -79,12 +61,7 @@ void Application::initializePipeline()
         .entries = &bindingLayout,
     };
     bindGroupLayout = device.CreateBindGroupLayout(&bindGroupLayoutDesc);
-    wgpu::PipelineLayoutDescriptor layoutDesc {
-        .bindGroupLayoutCount = 1,
-        .bindGroupLayouts = (wgpu::BindGroupLayout*)&bindGroupLayout,
-    };
-
-    auto layout = device.CreatePipelineLayout(&layoutDesc);
+    
     wgpu::BindGroupEntry binding {
         .binding = 0,
         .buffer = uniformBuffer,
@@ -99,29 +76,6 @@ void Application::initializePipeline()
     };
     bindGroup = device.CreateBindGroup(&bindGroupDesc);
 
-    wgpu::TextureFormat depthTextureFormat = wgpu::TextureFormat::Depth24Plus;
-    wgpu::DepthStencilState depthStencilState {
-        .format = depthTextureFormat,
-        .depthWriteEnabled = true,
-        .depthCompare = wgpu::CompareFunction::Less,
-        .stencilReadMask = 0,
-        .stencilWriteMask = 0,
-    };
-
-    wgpu::TextureDescriptor depthTextureDesc {
-        .usage = wgpu::TextureUsage::RenderAttachment,
-        .dimension = wgpu::TextureDimension::e2D,
-        .size = {kWidth, kHeight, 1},
-        .format = depthTextureFormat,
-        .mipLevelCount = 1,
-        .sampleCount = 1,
-        .viewFormatCount = 1,
-        .viewFormats = (wgpu::TextureFormat*)&depthTextureFormat,
-    };
-
-    depthTexture = device.CreateTexture(&depthTextureDesc);
-    depthTextureView = depthTexture.CreateView();
-
     /*-------------- PIPELINE ------------*/
 
     wgpu::FragmentState fragState {
@@ -132,6 +86,20 @@ void Application::initializePipeline()
         .targets = &target,
     };
 
+    wgpu::DepthStencilState depthStencilState {
+        .format = depthTextureFormat,
+        .depthWriteEnabled = true,
+        .depthCompare = wgpu::CompareFunction::Less,
+        .stencilReadMask = 0,
+        .stencilWriteMask = 0,
+    };
+
+    wgpu::PipelineLayoutDescriptor layoutDesc {
+        .bindGroupLayoutCount = 1,
+        .bindGroupLayouts = (wgpu::BindGroupLayout*)&bindGroupLayout,
+    };
+
+    auto layout = device.CreatePipelineLayout(&layoutDesc);
     wgpu::RenderPipelineDescriptor pipelineDesc {
         .label = "Main render pipeline",
         .layout = layout,
@@ -140,7 +108,7 @@ void Application::initializePipeline()
             .entryPoint = "vs",
             .constants = nullptr,
             .bufferCount = 1,
-            .buffers = &vertexBufferLayout,
+            .buffers = vertexLayout.getLayout(),
         },
         .depthStencil = &depthStencilState,
         .fragment = &fragState,
@@ -194,6 +162,7 @@ bool Application::initialize()
 
     initializeBuffers();
     initializePipeline();
+    depthManager = std::make_unique<DepthManager>(depthTextureFormat, device, kWidth, kHeight);
     return true;
 }
 
@@ -224,21 +193,11 @@ void Application::mainLoop()
             .clearValue = {0., 0., 0., 1.},
         };
 
-        wgpu::RenderPassDepthStencilAttachment depthAttachment {
-            .view = depthTextureView,
-            .depthLoadOp = wgpu::LoadOp::Clear,
-            .depthStoreOp = wgpu::StoreOp::Store,
-            .depthClearValue = 1.0f,
-            .stencilLoadOp = wgpu::LoadOp::Undefined,
-            .stencilStoreOp = wgpu::StoreOp::Undefined,
-            .stencilClearValue = 0,
-        };
-
         wgpu::RenderPassDescriptor renderPass {
             .label = "Main render pass",
             .colorAttachmentCount = 1,
             .colorAttachments = &attachment,
-            .depthStencilAttachment = &depthAttachment,
+            .depthStencilAttachment = depthManager->getDepthAttachment(),
         };
 
         auto pass = encoder.BeginRenderPass(&renderPass);
@@ -247,13 +206,8 @@ void Application::mainLoop()
         pass.SetVertexBuffer(0, pointBuffer, 0, pointBuffer.GetSize());
         pass.SetIndexBuffer(indexBuffer, wgpu::IndexFormat::Uint16, 0, indexBuffer.GetSize());
 
-        dynamicOffset = 0 * uniformStride;
-        pass.SetBindGroup(0, bindGroup, 1, &dynamicOffset);
+        pass.SetBindGroup(0, bindGroup, 0);
         pass.DrawIndexed(indexCount);
-
-        // dynamicOffset = 1 * uniformStride;
-        // pass.SetBindGroup(0, bindGroup, 1, &dynamicOffset);
-        // pass.DrawIndexed(indexCount);
 
         pass.End();
         auto commands = encoder.Finish();
@@ -266,7 +220,6 @@ void Application::terminate()
 {
     surface.Unconfigure();
     surface = nullptr;
-    depthTexture.Destroy();
     device.Destroy();
     indexBuffer.Destroy();
     pointBuffer.Destroy();

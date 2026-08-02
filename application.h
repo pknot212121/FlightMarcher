@@ -1,6 +1,7 @@
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <stdint.h>
 #include <iostream>
 #include <GLFW/glfw3.h>
@@ -10,9 +11,11 @@
 #include <webgpu/webgpu_glfw.h>
 #include "misc.h"
 #include <array>
+#include <glm/glm.hpp>
 
 constexpr uint32_t kWidth = 512;
 constexpr uint32_t kHeight = 512;
+constexpr wgpu::TextureFormat depthTextureFormat = wgpu::TextureFormat::Depth24Plus;
 
 class Application
 {
@@ -47,7 +50,5 @@ class Application
         uint32_t indexCount;
         wgpu::BindGroup bindGroup;
         uint32_t uniformStride;
-
-        wgpu::Texture depthTexture;
-        wgpu::TextureView depthTextureView;
+        std::unique_ptr<DepthManager> depthManager;
 };
