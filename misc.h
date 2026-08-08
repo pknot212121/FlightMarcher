@@ -121,73 +121,77 @@ class DepthManager
         wgpu::DepthStencilState depthStencilState;
 };
 
-template <typename T>
-class UniformGroup
+class BindGroupManager
 {
     public:
-        void init(  wgpu::Device device,
-                    wgpu::ShaderStage visibility = wgpu::ShaderStage::Vertex | wgpu::ShaderStage::Fragment,
-                    uint32_t bindingSlot = 0 )
+        struct BufferEntry
         {
-            wgpu::BufferDescriptor bufferDesc {
-                .label = "Uniform buffer",
-                .usage = wgpu::BufferUsage::Uniform | wgpu::BufferUsage::CopyDst,
-                .size = sizeof(T),
-            };
-            buffer = device.CreateBuffer(&bufferDesc);
+            uint32_t binding;
+            wgpu::Buffer buffer;
+            uint64_t size;
+            wgpu::BufferBindingType type;
+            wgpu::ShaderStage visibility;
+        };
 
-            wgpu::BindGroupLayoutEntry layoutEntry {
-                .binding = bindingSlot,
-                .visibility = visibility,
-                .buffer = {
-                    .type = wgpu::BufferBindingType::Uniform,
-                    .minBindingSize = sizeof(T),
-                }
-            };
+        BindGroupManager& addBuffer(
+            uint32_t binding,
+            wgpu::Buffer buffer,
+            uint64_t size,
+            wgpu::BufferBindingType type,
+            wgpu::ShaderStage visibility = wgpu::ShaderStage::Vertex | wgpu::ShaderStage::Fragment)
+        {
+            entries.push_back({binding, buffer, size, type, visibility});
+            return *this;
+        }
 
+        void build(wgpu::Device device)
+        {
+            std::vector<wgpu::BindGroupLayoutEntry> layoutEntries;
+            std::vector<wgpu::BindGroupEntry> groupEntries;
+            layoutEntries.reserve(entries.size());
+            groupEntries.reserve(entries.size());
+
+            for (const auto& entry : entries)
+            {
+                layoutEntries.push_back(wgpu::BindGroupLayoutEntry {
+                    .binding = entry.binding,
+                    .visibility = entry.visibility,
+                    .buffer = {
+                        .type = entry.type,
+                        .minBindingSize = entry.size,
+                    }
+                });
+                groupEntries.push_back(wgpu::BindGroupEntry {
+                    .binding = entry.binding,
+                    .buffer = entry.buffer,
+                    .offset = 0,
+                    .size = entry.size,
+                });
+            }
             wgpu::BindGroupLayoutDescriptor layoutDesc {
-                .entryCount = 1,
-                .entries = &layoutEntry,
+                .entryCount = static_cast<uint32_t>(layoutEntries.size()),
+                .entries = layoutEntries.data(),
             };
             layout = device.CreateBindGroupLayout(&layoutDesc);
-
-            wgpu::BindGroupEntry groupEntry {
-                .binding = bindingSlot,
-                .buffer = buffer,
-                .offset = 0,
-                .size = sizeof(T),
-            };
-
+            
             wgpu::BindGroupDescriptor groupDesc {
                 .layout = layout,
-                .entryCount = 1,
-                .entries = &groupEntry,
+                .entryCount = static_cast<uint32_t>(groupEntries.size()),
+                .entries = groupEntries.data(),
             };
             bindGroup = device.CreateBindGroup(&groupDesc);
         }
 
-        void update(wgpu::Queue queue, const T& data)
-        {
-            queue.WriteBuffer(buffer, 0, &data, sizeof(T));
-        }
-
-        void updateField(wgpu::Queue queue, uint64_t offset, const void* data, uint64_t size)
-        {
-            queue.WriteBuffer(buffer, offset, data, size);
-        }
-
-        void bind(wgpu::RenderPassEncoder pass, uint32_t groupIndex = 0) const
+        void bind(wgpu::RenderPassEncoder pass, uint32_t groupIndex) const 
         {
             pass.SetBindGroup(groupIndex, bindGroup);
         }
 
-        wgpu::BindGroupLayout getLayout() const
-        {
-            return layout;
-        }
-
+        wgpu::BindGroupLayout getLayout() const {return layout;}
+        wgpu::BindGroup getBindGroup() const {return bindGroup;}
+        
     private:
-        wgpu::Buffer buffer;
+        std::vector<BufferEntry>(entries);
         wgpu::BindGroupLayout layout;
         wgpu::BindGroup bindGroup;
 };

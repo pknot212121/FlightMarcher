@@ -39,7 +39,9 @@ FetchContent_MakeAvailable(tinyobjloader)
 add_executable(App "main.cpp"
     misc.h
     application.h
-    application.cpp)
+    application.cpp
+    plane.h
+    plane.cpp)
     
 target_link_libraries(App PRIVATE 
     webgpu_dawn

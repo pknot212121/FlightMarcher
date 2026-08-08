@@ -2,48 +2,42 @@
 
 void Application::initializeBuffers()
 {
-
     std::vector<VertexAttributes> vertexData;
-    bool success = loadGeometryFromObj(RESOURCE_DIR "/mammoth.obj", vertexData);
+    bool success = loadGeometryFromObj(RESOURCE_DIR "/pyramid.obj", vertexData);
     assert(success);
-
-    pointBuffer = createBuffer(device, "vertex_buffer", vertexData.size() * sizeof(VertexAttributes), wgpu::BufferUsage::Vertex);
-    device.GetQueue().WriteBuffer(pointBuffer, 0, vertexData.data(), vertexData.size() * sizeof(VertexAttributes));
+    vertexBuffer = createBuffer(device, "vertex_buffer", vertexData.size() * sizeof(VertexAttributes), wgpu::BufferUsage::Vertex);
+    device.GetQueue().WriteBuffer(vertexBuffer, 0, vertexData.data(), vertexData.size() * sizeof(VertexAttributes));
     vertexCount = static_cast<int32_t>(vertexData.size());
+
+    for (int i = 0; i < 100; i++)
+    {
+        Airplane plane{};
+        vec2 latLon {(i % 10) * 15.0f - 60.0f, (i / 10) * 36.0f - 180.0f};
+        plane.setFlightData(latLon, 5.0f, (i * 25) % 360);
+        plane.setScale(15.0f);
+        planes.push_back(plane);
+    }
+    instanceBuffer = createBuffer(device, "instance", planes.size() * sizeof(mat4), wgpu::BufferUsage::Storage);
+    uniformBuffer = createBuffer(device, "uniform buffer", sizeof(MyUniforms), wgpu::BufferUsage::Uniform);
+
     wgpu::Limits limits;
     device.GetLimits(&limits);
-    
-    mainUniforms.init(device);
 
-    vec3 focalPoint(0.0, 0.0, -2.0);
-    float angle2 = 3.0f * PI / 4.0f;
-    float focalLength = 2.0;
-    float fov = 2 * glm::atan(1 / focalLength);
-
-    mat4x4 M(1.0);
-    M = glm::rotate(M, 0.0f, vec3(0.0, 0.0, 1.0));
-    M = glm::translate(M, vec3(0.5, 0.0, 0.0));
-    M = glm::scale(M, vec3(0.3f));
-
-    mat4x4 V(1.0);
-    V = glm::translate(V, -focalPoint);
-    V = glm::rotate(V, -angle2, vec3(1.0, 0.0, 0.0));
-    mat4x4 P = glm::perspective(fov, 1.0f, 0.01f, 100.0f);
+    mat4x4 V = glm::lookAt(cameraPos, cameraTarget, cameraUp);
+    mat4x4 P = glm::perspective(fov, 1.0f, 0.01f, 1000.0f);
 
     MyUniforms uniformValues {
         .projectionMatrix = P,
         .viewMatrix = V,
-        .modelMatrix = M,
-        .color = {0.0f, 1.0f, 0.4f, 1.0f},
-        .time = 0,
     };
-    mainUniforms.update(device.GetQueue(), uniformValues);
+
+    device.GetQueue().WriteBuffer(uniformBuffer, 0, &uniformValues, sizeof(MyUniforms));
 }
 
 void Application::initializePipeline()
 {
     assert(surfaceFormat);
-    assert(pointBuffer);
+    assert(vertexBuffer);
     auto shader = loadShaderModule(RESOURCE_DIR "/shader.wgsl", device);
     assert(shader);
     wgpu::ColorTargetState target{.format = surfaceFormat,};
@@ -59,7 +53,10 @@ void Application::initializePipeline()
         .targets = &target,
     };
 
-    wgpu::BindGroupLayout bindGroupLayout = mainUniforms.getLayout();
+    mainBindGroup.addBuffer(0, uniformBuffer, sizeof(MyUniforms), wgpu::BufferBindingType::Uniform);
+    mainBindGroup.addBuffer(1, instanceBuffer, planes.size() * sizeof(mat4), wgpu::BufferBindingType::ReadOnlyStorage, wgpu::ShaderStage::Vertex);
+    mainBindGroup.build(device);
+    wgpu::BindGroupLayout bindGroupLayout = mainBindGroup.getLayout();
     wgpu::PipelineLayoutDescriptor layoutDesc {
         .bindGroupLayoutCount = 1,
         .bindGroupLayouts = (wgpu::BindGroupLayout*)&bindGroupLayout,
@@ -140,6 +137,25 @@ void Application::mainLoop()
     {
         glfwPollEvents();
         device.Tick();
+
+        for (auto& plane : planes)
+        {
+            plane.fly({0.0f, 0.05f});
+        }
+
+        std::vector<glm::mat4> instanceData;
+        instanceData.reserve(planes.size());
+        for (auto& plane : planes)
+        {
+            instanceData.push_back(plane.getModelMatrix());
+        }
+
+        device.GetQueue().WriteBuffer(
+            instanceBuffer, 0, 
+            instanceData.data(), 
+            instanceData.size() * sizeof(glm::mat4)
+        );
+
         auto encoder = device.CreateCommandEncoder();
         encoder.SetLabel("Main command encoder");
         wgpu::SurfaceTexture surfaceTexture;
@@ -148,12 +164,8 @@ void Application::mainLoop()
         auto backbufferView = surfaceTexture.texture.CreateView();
         backbufferView.SetLabel("Back buffer Texture View");
         float time = static_cast<float>(glfwGetTime());
-        mainUniforms.updateField(device.GetQueue(), offsetof(MyUniforms, time), &time, sizeof(float));
-        mat4x4 M(1.0);
-        M = glm::rotate(M, time, vec3(0.0, 0.0, 1.0));
-        M = glm::translate(M, vec3(0.5, 0.0, 0.0));
-        M = glm::scale(M, vec3(0.3f));
-        mainUniforms.updateField(device.GetQueue(), offsetof(MyUniforms, modelMatrix), &M, sizeof(mat4x4));
+        
+        
         wgpu::RenderPassColorAttachment attachment {
             .view = backbufferView,
             .loadOp = wgpu::LoadOp::Clear,
@@ -170,9 +182,9 @@ void Application::mainLoop()
 
         auto pass = encoder.BeginRenderPass(&renderPass);
         pass.SetPipeline(pipeline);
-        pass.SetVertexBuffer(0, pointBuffer, 0, pointBuffer.GetSize());
-        mainUniforms.bind(pass);
-        pass.Draw(vertexCount, 1, 0, 0);
+        pass.SetVertexBuffer(0, vertexBuffer, 0, vertexBuffer.GetSize());
+        mainBindGroup.bind(pass, 0);
+        pass.Draw(vertexCount, static_cast<uint32_t>(planes.size()), 0, 0);
         pass.End();
 
         auto commands = encoder.Finish();
@@ -186,7 +198,7 @@ void Application::terminate()
     surface.Unconfigure();
     surface = nullptr;
     device.Destroy();
-    pointBuffer.Destroy();
+    vertexBuffer.Destroy();
     glfwDestroyWindow(window);
     glfwTerminate();
 }

@@ -3,3 +3,4 @@ build
 dawn
 */compile_commands.json
 *.obj
+.vscode/

@@ -4,11 +4,17 @@
 #include <dawn/webgpu_cpp_print.h>
 #include <webgpu/webgpu_glfw.h>
 #include "misc.h"
+#include "plane.h"
 
 constexpr float PI = 3.14159265358979323846f;
 constexpr uint32_t kWidth = 512;
 constexpr uint32_t kHeight = 512;
 constexpr wgpu::TextureFormat depthTextureFormat = wgpu::TextureFormat::Depth24Plus;
+
+constexpr glm::vec3 cameraPos(0.0f, 0.0f, 300.0f);
+constexpr glm::vec3 cameraTarget(0.0f, 0.0f, 0.0f);
+constexpr glm::vec3 cameraUp(0.0f, 1.0f, 0.0f);
+constexpr float fov = 1.047198f;
 
 class Application
 {
@@ -24,10 +30,6 @@ class Application
         {
             mat4x4 projectionMatrix;
             mat4x4 viewMatrix;
-            mat4x4 modelMatrix;
-            vec4 color;
-            float time;
-            float _pad[3];
         };
         static_assert(sizeof(MyUniforms) % 16 == 0);
 
@@ -38,8 +40,11 @@ class Application
         wgpu::Adapter adapter;
         wgpu::Device device;
         wgpu::RenderPipeline pipeline;
-        wgpu::Buffer pointBuffer;
+        wgpu::Buffer vertexBuffer;
         int32_t vertexCount = 0;
         std::unique_ptr<DepthManager> depthManager;
-        UniformGroup<MyUniforms> mainUniforms;
+        BindGroupManager mainBindGroup;
+        std::vector<Airplane> planes;
+        wgpu::Buffer instanceBuffer;
+        wgpu::Buffer uniformBuffer;
 };
