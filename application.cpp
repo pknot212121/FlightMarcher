@@ -3,7 +3,7 @@
 void Application::initializeBuffers()
 {
     std::vector<VertexAttributes> vertexData;
-    bool success = loadGeometryFromObj(RESOURCE_DIR "/plane.obj", vertexData);
+    bool success = loadGeometryFromObj(RESOURCE_DIR "/plane2.obj", vertexData);
     assert(success);
     vertexBuffer = createBuffer(device, "vertex_buffer", vertexData.size() * sizeof(VertexAttributes), wgpu::BufferUsage::Vertex);
     device.GetQueue().WriteBuffer(vertexBuffer, 0, vertexData.data(), vertexData.size() * sizeof(VertexAttributes));

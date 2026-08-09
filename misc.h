@@ -208,6 +208,8 @@ inline bool loadGeometryFromObj(const fs::path& path, std::vector<VertexAttribut
     tinyobj::ObjReaderConfig readerConfig;
     readerConfig.triangulate = true;
 
+    readerConfig.mtl_search_path = path.parent_path().string();
+
     if (!reader.ParseFromFile(path.string(), readerConfig))
     {
         if (!reader.Error().empty())
@@ -224,6 +226,7 @@ inline bool loadGeometryFromObj(const fs::path& path, std::vector<VertexAttribut
 
     const auto& attrib = reader.GetAttrib();
     const auto& shapes = reader.GetShapes();
+    const auto& materials = reader.GetMaterials();
     
     size_t offset = std::accumulate(shapes.begin(), shapes.end(), 0, []
         (size_t total, auto& shape){return total + shape.mesh.indices.size();});
@@ -242,17 +245,42 @@ inline bool loadGeometryFromObj(const fs::path& path, std::vector<VertexAttribut
                 attrib.vertices[3 * idx.vertex_index + 1]
             };
 
-            vertexData[offset + i].normal = {
-                attrib.normals[3 * idx.normal_index + 0],
-                -attrib.normals[3 * idx.normal_index + 2],
-                attrib.normals[3 * idx.normal_index + 1]
-            };
+            if (idx.normal_index >= 0)
+            {
+                vertexData[offset + i].normal = {
+                    attrib.normals[3 * idx.normal_index + 0],
+                    -attrib.normals[3 * idx.normal_index + 2],
+                    attrib.normals[3 * idx.normal_index + 1]
+                };
+            }
+            else
+            {
+                vertexData[offset + i].normal = {0.0f, 1.0f, 0.0f};
+            }
 
-            vertexData[offset + i].color = {
-                attrib.colors[3 * idx.vertex_index + 0],
-                attrib.colors[3 * idx.vertex_index + 1],
-                attrib.colors[3 * idx.vertex_index + 2]
-            };
+            vec3 finalColor {1.0f};
+            size_t faceIndex = i / 3;
+            if (faceIndex < shape.mesh.material_ids.size())
+            {
+                int matId = shape.mesh.material_ids[faceIndex];
+                if (matId >= 0 && matId < static_cast<int>(materials.size()))
+                {
+                    finalColor = {
+                        materials[matId].diffuse[0],
+                        materials[matId].diffuse[1],
+                        materials[matId].diffuse[2],
+                    };
+                }
+            }
+            else if (!attrib.colors.empty())
+            {
+                finalColor = {
+                    attrib.colors[3 * idx.vertex_index + 0],
+                    attrib.colors[3 * idx.vertex_index + 1],
+                    attrib.colors[3 * idx.vertex_index + 2]
+                };
+            }
+            vertexData[offset + i].color = finalColor;
         }
         offset += shape.mesh.indices.size();
     }
