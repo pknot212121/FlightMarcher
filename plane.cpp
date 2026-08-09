@@ -46,10 +46,10 @@ mat4 Airplane::getModelMatrix()
     vec3 right = glm::cross(up, forward);
 
     mat4 model {
-        vec4(right, 0.0f),
-        vec4(up, 0.0f),
-        vec4(forward, 0.0f),
-        vec4(pos, 1.0f),
+        vec4(forward, 0.0f), // lokalne X
+        vec4(right, 0.0f), // lokalne Y
+        vec4(up, 0.0f), // lokalne Z
+        vec4(pos, 1.0f), // przesunięcie
     };
 
     cachedModelMatrix = glm::scale(model, vec3(scale));

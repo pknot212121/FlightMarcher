@@ -11,7 +11,7 @@ constexpr uint32_t kWidth = 512;
 constexpr uint32_t kHeight = 512;
 constexpr wgpu::TextureFormat depthTextureFormat = wgpu::TextureFormat::Depth24Plus;
 
-constexpr glm::vec3 cameraPos(0.0f, 0.0f, 300.0f);
+constexpr glm::vec3 cameraPos(0.0f, 0.0f, 200.0f);
 constexpr glm::vec3 cameraTarget(0.0f, 0.0f, 0.0f);
 constexpr glm::vec3 cameraUp(0.0f, 1.0f, 0.0f);
 constexpr float fov = 1.047198f;

@@ -3,7 +3,7 @@
 void Application::initializeBuffers()
 {
     std::vector<VertexAttributes> vertexData;
-    bool success = loadGeometryFromObj(RESOURCE_DIR "/pyramid.obj", vertexData);
+    bool success = loadGeometryFromObj(RESOURCE_DIR "/plane.obj", vertexData);
     assert(success);
     vertexBuffer = createBuffer(device, "vertex_buffer", vertexData.size() * sizeof(VertexAttributes), wgpu::BufferUsage::Vertex);
     device.GetQueue().WriteBuffer(vertexBuffer, 0, vertexData.data(), vertexData.size() * sizeof(VertexAttributes));
@@ -14,7 +14,7 @@ void Application::initializeBuffers()
         Airplane plane{};
         vec2 latLon {(i % 10) * 15.0f - 60.0f, (i / 10) * 36.0f - 180.0f};
         plane.setFlightData(latLon, 5.0f, (i * 25) % 360);
-        plane.setScale(15.0f);
+        plane.setScale(1.5f);
         planes.push_back(plane);
     }
     instanceBuffer = createBuffer(device, "instance", planes.size() * sizeof(mat4), wgpu::BufferUsage::Storage);
