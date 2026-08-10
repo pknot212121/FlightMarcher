@@ -1,5 +1,7 @@
 build
 build-wasm
+node_modules
+.env
 .cache
 dawn
 */compile_commands.json
