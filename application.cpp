@@ -23,9 +23,9 @@ void Application::initializeBuffers()
     wgpu::Limits limits;
     device.GetLimits(&limits);
 
-    mat4x4 V = glm::lookAt(CAMERA_POS, CAMERA_TARGET, CAMERA_UP);
+    mat4x4 V = glm::lookAt(cameraPos, cameraPos + cameraFront, CAMERA_UP);
     mat4x4 P = glm::perspective(FOV, 1.0f, 0.01f, 1000.0f);
-
+    projectionMatrix = P;
     MyUniforms uniformValues {
         .projectionMatrix = P,
         .viewMatrix = V,
@@ -79,6 +79,38 @@ void Application::initializePipeline()
     pipeline = device.CreateRenderPipeline(&pipelineDesc);
 }
 
+void Application::processInput()
+{
+    if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
+        cameraPos += CAMERA_SPEED * cameraFront;
+    if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
+        cameraPos -= CAMERA_SPEED * cameraFront;
+    if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
+        cameraPos += glm::normalize(glm::cross(cameraFront, CAMERA_UP)) * CAMERA_SPEED;
+    if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
+        cameraPos -= glm::normalize(glm::cross(cameraFront, CAMERA_UP)) * CAMERA_SPEED;
+}
+
+void Application::handleMouse(vec2 pos)
+{
+    if (firstClick)
+    {
+        lastXY = pos;
+        firstClick = false;
+    }
+
+    vec2 offset = lastXY - pos;
+    lastXY = pos;
+    offset *= SENSITIVITY;
+    
+    quat qYaw = glm::angleAxis(glm::radians(-offset.x), vec3(0.0f, 1.0f, 0.0f));
+    vec3 right = glm::normalize(glm::cross(cameraFront, CAMERA_UP));
+    quat qPitch = glm::angleAxis(glm::radians(offset.y), right);
+
+    quat totalRotation = qPitch * qYaw;
+    cameraFront = glm::normalize(totalRotation * cameraFront);
+}
+
 void Application::renderFrame()
 {
     if (!device || !pipeline)
@@ -87,10 +119,17 @@ void Application::renderFrame()
     }
 
     glfwPollEvents();
-
+    processInput();
 #ifndef __EMSCRIPTEN__
     device.Tick(); 
 #endif
+
+    mat4x4 V = glm::lookAt(cameraPos, cameraPos + cameraFront, CAMERA_UP);
+    MyUniforms uniformValues {
+        .projectionMatrix = projectionMatrix,
+        .viewMatrix = V,
+    };
+    device.GetQueue().WriteBuffer(uniformBuffer, 0, &uniformValues, sizeof(MyUniforms));
 
     for (auto& plane : planes)
     {
@@ -144,6 +183,7 @@ void Application::renderFrame()
 #endif
 }
 
+
 bool Application::initialize()
 {
     glfwSetErrorCallback(glfwError);
@@ -160,6 +200,14 @@ bool Application::initialize()
         std::cerr << "Unable to create GLFW Window";
         return false;
     }
+    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+    glfwSetWindowUserPointer(window, this);
+    glfwSetCursorPosCallback(window, [](GLFWwindow* w, double xpos, double ypos)
+    {
+        auto app = static_cast<Application*>(glfwGetWindowUserPointer(w));
+        if (app)
+            app->handleMouse({xpos, ypos});
+    });
 
     instance = wgpu::CreateInstance();
 
