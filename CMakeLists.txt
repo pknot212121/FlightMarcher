@@ -10,16 +10,6 @@ set(FETCHCONTENT_QUIET OFF)
 
 include(FetchContent)
 
-set(DAWN_FETCH_DEPENDENCIES ON)
-
-FetchContent_Declare(
-    dawn
-    GIT_REPOSITORY https://github.com/google/dawn.git
-    GIT_TAG        v20260720.160313
-    GIT_SHALLOW    TRUE
-    GIT_SUBMODULES ""
-)
-
 FetchContent_Declare(
     glm
     GIT_REPOSITORY  https://github.com/g-truc/glm.git
@@ -32,7 +22,6 @@ FetchContent_Declare(
     GIT_TAG         v2.0.0rc13
 )
 
-FetchContent_MakeAvailable(dawn)
 FetchContent_MakeAvailable(glm)
 FetchContent_MakeAvailable(tinyobjloader)
 
@@ -42,18 +31,54 @@ add_executable(App "main.cpp"
     application.cpp
     plane.h
     plane.cpp)
-    
-target_link_libraries(App PRIVATE 
-    webgpu_dawn
-    webgpu_glfw
-    glfw
-    glm::glm
-    tinyobjloader)
 
-target_compile_definitions(
-    App PRIVATE
-    RESOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/resources"
-    GLM_FORCE_DEPTH_ZERO_TO_ONE
-    GLM_FORCE_LEFT_HANDED
-)
+if(EMSCRIPTEN)
+    target_compile_options(App PRIVATE
+        "--use-port=emdawnwebgpu"
+    )
 
+    target_link_options(App PRIVATE
+        "--use-port=emdawnwebgpu"
+        "-sUSE_GLFW=3"
+        "-sASYNCIFY"
+        "--preload-file" "${CMAKE_CURRENT_SOURCE_DIR}/resources@resources"
+        "--shell-file" "${CMAKE_CURRENT_SOURCE_DIR}/shell.html"
+    )
+    target_link_libraries(App PRIVATE glm::glm tinyobjloader)
+
+    target_compile_definitions(
+        App PRIVATE
+        RESOURCE_DIR="resources"
+        GLM_FORCE_DEPTH_ZERO_TO_ONE
+        GLM_FORCE_LEFT_HANDED
+    )
+    set_target_properties(App PROPERTIES SUFFIX ".html")
+
+else()
+    set(DAWN_FETCH_DEPENDENCIES ON)
+
+    FetchContent_Declare(
+        dawn
+        GIT_REPOSITORY https://github.com/google/dawn.git
+        GIT_TAG        v20260720.160313
+        GIT_SHALLOW    TRUE
+        GIT_SUBMODULES ""
+    )
+    FetchContent_MakeAvailable(dawn)
+
+    target_link_libraries(App PRIVATE 
+        webgpu_dawn
+        webgpu_glfw
+        glfw
+        glm::glm
+        tinyobjloader
+    )
+
+    target_compile_definitions(
+        App PRIVATE
+        RESOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/resources"
+        GLM_FORCE_DEPTH_ZERO_TO_ONE
+        GLM_FORCE_LEFT_HANDED
+    )
+
+endif()

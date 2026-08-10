@@ -1,12 +1,12 @@
 #include <numeric>
-#include <webgpu/webgpu_cpp.h>
+
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <iostream>
 #include <string_view>
-#include <webgpu/webgpu.h>
+
 #include <vector>
 #include <filesystem>
 #include <fstream>
@@ -18,6 +18,13 @@
 #include <glm/glm.hpp>
 #include <glm/ext.hpp>
 
+#include <webgpu/webgpu.h>
+#include <webgpu/webgpu_cpp.h>
+
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#include <emscripten/html5.h>
+#endif
 using glm::mat4x4;
 using glm::vec4;
 using glm::vec3;

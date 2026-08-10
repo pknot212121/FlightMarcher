@@ -7,8 +7,8 @@ using glm::vec3;
 using glm::vec4;
 using glm::mat4;
 
-constexpr float planetRadius = 100.0f;
-constexpr vec3 worldNorth {0.0f, 1.0f, 0.0f};
+constexpr float PLANET_RADIUS = 100.0f;
+constexpr vec3 WORLD_NORTH {0.0f, 1.0f, 0.0f};
 
 
 class Airplane

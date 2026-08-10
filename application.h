@@ -1,20 +1,27 @@
 #include <memory>
 #include <GLFW/glfw3.h>
-#include <webgpu/webgpu_cpp.h>
-#include <dawn/webgpu_cpp_print.h>
-#include <webgpu/webgpu_glfw.h>
 #include "misc.h"
 #include "plane.h"
+#include <webgpu/webgpu_cpp.h>
+
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#include <emscripten/html5.h>
+#else
+#include <webgpu/webgpu_glfw.h>
+#include <dawn/webgpu_cpp_print.h>
+#endif
 
 constexpr float PI = 3.14159265358979323846f;
-constexpr uint32_t kWidth = 512;
-constexpr uint32_t kHeight = 512;
-constexpr wgpu::TextureFormat depthTextureFormat = wgpu::TextureFormat::Depth24Plus;
+constexpr uint32_t WIN_WIDTH = 512;
+constexpr uint32_t WIN_HEIGHT = 512;
+constexpr wgpu::TextureFormat DEPTH_TEXTURE_FORMAT = wgpu::TextureFormat::Depth24Plus;
 
-constexpr glm::vec3 cameraPos(0.0f, 0.0f, 200.0f);
-constexpr glm::vec3 cameraTarget(0.0f, 0.0f, 0.0f);
-constexpr glm::vec3 cameraUp(0.0f, 1.0f, 0.0f);
-constexpr float fov = 1.047198f;
+constexpr vec3 CAMERA_POS {0.0f, 0.0f, 200.0f};
+constexpr vec3 CAMERA_TARGET {0.0f, 0.0f, 0.0f};
+constexpr vec3 CAMERA_UP {0.0f, 1.0f, 0.0f};
+constexpr float FOV = 1.047198f;
+constexpr uint32_t MAX_PLANES = 30000;
 
 class Application
 {
@@ -23,6 +30,7 @@ class Application
         void initializePipeline();
         bool initialize();
         void mainLoop();
+        void renderFrame();
         void terminate();
 
     private:

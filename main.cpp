@@ -2,8 +2,8 @@
 
 int main()
 {
-  Application app;
-  app.initialize();
-  app.mainLoop();
-  app.terminate();
+    Application app;
+    app.initialize();
+    app.mainLoop();
+    app.terminate();
 }

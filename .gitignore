@@ -1,4 +1,5 @@
 build
+build-wasm
 .cache
 dawn
 */compile_commands.json

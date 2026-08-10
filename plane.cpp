@@ -29,7 +29,7 @@ mat4 Airplane::getModelMatrix()
 
     float latRad = glm::radians(latLon.x);
     float lonRad = glm::radians(latLon.y);
-    float r = planetRadius + altitude;
+    float r = PLANET_RADIUS + altitude;
 
     vec3 pos {
         r * std::cos(latRad) * std::cos(lonRad),
@@ -38,7 +38,7 @@ mat4 Airplane::getModelMatrix()
     };
 
     vec3 up = glm::normalize(pos);
-    vec3 east = glm::normalize(glm::cross(worldNorth, up));
+    vec3 east = glm::normalize(glm::cross(WORLD_NORTH, up));
     vec3 north = glm::cross(up, east);
 
     float headingRad = glm::radians(heading);

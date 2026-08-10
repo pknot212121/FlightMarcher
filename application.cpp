@@ -23,8 +23,8 @@ void Application::initializeBuffers()
     wgpu::Limits limits;
     device.GetLimits(&limits);
 
-    mat4x4 V = glm::lookAt(cameraPos, cameraTarget, cameraUp);
-    mat4x4 P = glm::perspective(fov, 1.0f, 0.01f, 1000.0f);
+    mat4x4 V = glm::lookAt(CAMERA_POS, CAMERA_TARGET, CAMERA_UP);
+    mat4x4 P = glm::perspective(FOV, 1.0f, 0.01f, 1000.0f);
 
     MyUniforms uniformValues {
         .projectionMatrix = P,
@@ -36,14 +36,14 @@ void Application::initializeBuffers()
 
 void Application::initializePipeline()
 {
-    assert(surfaceFormat);
+    assert(surfaceFormat != wgpu::TextureFormat::Undefined);
     assert(vertexBuffer);
     auto shader = loadShaderModule(RESOURCE_DIR "/shader.wgsl", device);
     assert(shader);
     wgpu::ColorTargetState target{.format = surfaceFormat,};
 
     DynamicVertexLayout vertexLayout({3, 3, 3});
-    depthManager = std::make_unique<DepthManager>(depthTextureFormat, device, kWidth, kHeight);
+    depthManager = std::make_unique<DepthManager>(DEPTH_TEXTURE_FORMAT, device, WIN_WIDTH, WIN_HEIGHT);
 
     wgpu::FragmentState fragState {
         .module = shader,
@@ -79,6 +79,71 @@ void Application::initializePipeline()
     pipeline = device.CreateRenderPipeline(&pipelineDesc);
 }
 
+void Application::renderFrame()
+{
+    if (!device || !pipeline)
+    {
+        return;
+    }
+
+    glfwPollEvents();
+
+#ifndef __EMSCRIPTEN__
+    device.Tick(); 
+#endif
+
+    for (auto& plane : planes)
+    {
+        plane.fly({0.0f, 0.05f});
+    }
+
+    std::vector<glm::mat4> instanceData;
+    instanceData.reserve(planes.size());
+    for (auto& plane : planes)
+    {
+        instanceData.push_back(plane.getModelMatrix());
+    }
+
+    device.GetQueue().WriteBuffer(
+        instanceBuffer, 0, 
+        instanceData.data(), 
+        instanceData.size() * sizeof(glm::mat4)
+    );
+
+    auto encoder = device.CreateCommandEncoder();
+    wgpu::SurfaceTexture surfaceTexture;
+    surface.GetCurrentTexture(&surfaceTexture);
+
+    auto backbufferView = surfaceTexture.texture.CreateView();
+
+    wgpu::RenderPassColorAttachment attachment {
+        .view = backbufferView,
+        .loadOp = wgpu::LoadOp::Clear,
+        .storeOp = wgpu::StoreOp::Store,
+        .clearValue = {0.2, 0.2, 0.2, 1.},
+    };
+
+    wgpu::RenderPassDescriptor renderPass {
+        .colorAttachmentCount = 1,
+        .colorAttachments = &attachment,
+        .depthStencilAttachment = depthManager->getDepthAttachment(),
+    };
+
+    auto pass = encoder.BeginRenderPass(&renderPass);
+    pass.SetPipeline(pipeline);
+    pass.SetVertexBuffer(0, vertexBuffer, 0, vertexBuffer.GetSize());
+    mainBindGroup.bind(pass, 0);
+    pass.Draw(vertexCount, static_cast<uint32_t>(planes.size()), 0, 0);
+    pass.End();
+
+    auto commands = encoder.Finish();
+    device.GetQueue().Submit(1, &commands);
+
+#ifndef __EMSCRIPTEN__
+    surface.Present();
+#endif
+}
+
 bool Application::initialize()
 {
     glfwSetErrorCallback(glfwError);
@@ -89,7 +154,7 @@ bool Application::initialize()
     }
 
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-    window = glfwCreateWindow(kWidth, kHeight, "Triangle", nullptr, nullptr);
+    window = glfwCreateWindow(WIN_WIDTH, WIN_HEIGHT, "Triangle", nullptr, nullptr);
     if (!window)
     {
         std::cerr << "Unable to create GLFW Window";
@@ -97,6 +162,58 @@ bool Application::initialize()
     }
 
     instance = wgpu::CreateInstance();
+
+#ifdef __EMSCRIPTEN__
+    wgpu::EmscriptenSurfaceSourceCanvasHTMLSelector canvasDesc{};
+    canvasDesc.selector = "#canvas";
+    wgpu::SurfaceDescriptor surfaceDesc{};
+    surfaceDesc.nextInChain = &canvasDesc;
+    surface = instance.CreateSurface(&surfaceDesc);
+
+    wgpu::RequestAdapterOptions adapterOpts {
+        .powerPreference = wgpu::PowerPreference::HighPerformance,
+        .compatibleSurface = surface,
+    };
+
+    instance.RequestAdapter(&adapterOpts, wgpu::CallbackMode::AllowSpontaneous,
+        [this](wgpu::RequestAdapterStatus status, wgpu::Adapter ad, wgpu::StringView message) {
+            if (status != wgpu::RequestAdapterStatus::Success) {
+                std::cerr << "Failed to request adapter: " << (message.data ? message.data : "") << std::endl;
+                return;
+            }
+            this->adapter = ad;
+
+            wgpu::DeviceDescriptor deviceDesc{};
+            deviceDesc.label = "Primary device";
+
+            this->adapter.RequestDevice(&deviceDesc, wgpu::CallbackMode::AllowSpontaneous,
+                [this](wgpu::RequestDeviceStatus status, wgpu::Device dev, wgpu::StringView message) {
+                    if (status != wgpu::RequestDeviceStatus::Success) {
+                        std::cerr << "Failed to request device: " << (message.data ? message.data : "") << std::endl;
+                        return;
+                    }
+                    this->device = dev;
+
+                    wgpu::SurfaceCapabilities capabilities;
+                    this->surface.GetCapabilities(this->adapter, &capabilities);
+                    this->surfaceFormat = capabilities.formats[0];
+
+                    wgpu::SurfaceConfiguration config {
+                        .device = this->device,
+                        .format = this->surfaceFormat,
+                        .width = WIN_WIDTH,
+                        .height = WIN_HEIGHT,
+                        .presentMode = wgpu::PresentMode::Fifo,
+                    };
+                    this->surface.Configure(&config);
+
+                    this->initializeBuffers();
+                    this->initializePipeline();
+                }
+            );
+        }
+    );
+#else
     surface = wgpu::glfw::CreateSurfaceForWindow(instance, window);
 
     wgpu::RequestAdapterOptions adapterOpts {
@@ -117,80 +234,36 @@ bool Application::initialize()
     wgpu::SurfaceConfiguration config {
         .device = device,
         .format = surfaceFormat,
-        .width = kWidth,
-        .height = kHeight,
+        .width = WIN_WIDTH,
+        .height = WIN_HEIGHT,
         .presentMode = wgpu::PresentMode::Fifo,
     };
     surface.Configure(&config);
 
     initializeBuffers();
     initializePipeline();
+#endif
+
     return true;
 }
 
 void Application::mainLoop()
 {
+    #ifndef __EMSCRIPTEN__
     assert(device);
     assert(pipeline);
+    #endif
 
+    #ifdef __EMSCRIPTEN__
+    emscripten_set_main_loop_arg([](void* arg) {
+        static_cast<Application*>(arg)->renderFrame();
+    }, this, 0, true);
+    #else
     while (!glfwWindowShouldClose(window))
     {
-        glfwPollEvents();
-        device.Tick();
-
-        for (auto& plane : planes)
-        {
-            plane.fly({0.0f, 0.05f});
-        }
-
-        std::vector<glm::mat4> instanceData;
-        instanceData.reserve(planes.size());
-        for (auto& plane : planes)
-        {
-            instanceData.push_back(plane.getModelMatrix());
-        }
-
-        device.GetQueue().WriteBuffer(
-            instanceBuffer, 0, 
-            instanceData.data(), 
-            instanceData.size() * sizeof(glm::mat4)
-        );
-
-        auto encoder = device.CreateCommandEncoder();
-        encoder.SetLabel("Main command encoder");
-        wgpu::SurfaceTexture surfaceTexture;
-        surface.GetCurrentTexture(&surfaceTexture);
-
-        auto backbufferView = surfaceTexture.texture.CreateView();
-        backbufferView.SetLabel("Back buffer Texture View");
-        float time = static_cast<float>(glfwGetTime());
-        
-        
-        wgpu::RenderPassColorAttachment attachment {
-            .view = backbufferView,
-            .loadOp = wgpu::LoadOp::Clear,
-            .storeOp = wgpu::StoreOp::Store,
-            .clearValue = {0.2, 0.2, 0.2, 1.},
-        };
-
-        wgpu::RenderPassDescriptor renderPass {
-            .label = "Main render pass",
-            .colorAttachmentCount = 1,
-            .colorAttachments = &attachment,
-            .depthStencilAttachment = depthManager->getDepthAttachment(),
-        };
-
-        auto pass = encoder.BeginRenderPass(&renderPass);
-        pass.SetPipeline(pipeline);
-        pass.SetVertexBuffer(0, vertexBuffer, 0, vertexBuffer.GetSize());
-        mainBindGroup.bind(pass, 0);
-        pass.Draw(vertexCount, static_cast<uint32_t>(planes.size()), 0, 0);
-        pass.End();
-
-        auto commands = encoder.Finish();
-        device.GetQueue().Submit(1, &commands);
-        surface.Present();
+        renderFrame();
     }
+    #endif
 }
 
 void Application::terminate()
