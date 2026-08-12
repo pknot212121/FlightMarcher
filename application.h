@@ -37,6 +37,7 @@ class Application
         void renderFrame();
         void terminate();
         void fetchPlanesOnDemand();
+        void onResize(uint32_t width, uint32_t height);
     private:
         void processInput();
         void handleMouse(vec2 pos);

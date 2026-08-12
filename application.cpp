@@ -181,6 +181,25 @@ void Application::renderFrame()
 }
 
 
+#ifdef __EMSCRIPTEN__
+static EM_BOOL onWindowResize(int eventType, const EmscriptenUiEvent* uiEvent, void* userData)
+{
+    auto app = static_cast<Application*>(userData);
+    if (!app) return EM_FALSE;
+
+    double cssWidth, cssHeight;
+    emscripten_get_element_css_size("#canvas", &cssWidth, &cssHeight);
+    double dpr = emscripten_get_device_pixel_ratio();
+
+    uint32_t width = static_cast<uint32_t>(cssWidth * dpr);
+    uint32_t height = static_cast<uint32_t>(cssHeight * dpr);
+
+    emscripten_set_canvas_element_size("#canvas", width, height);
+    app->onResize(width, height);
+    return EM_TRUE;
+}
+#endif
+
 bool Application::initialize()
 {
     glfwSetErrorCallback(glfwError);
@@ -233,30 +252,24 @@ bool Application::initialize()
 
             this->adapter.RequestDevice(&deviceDesc, wgpu::CallbackMode::AllowSpontaneous,
                 [this](wgpu::RequestDeviceStatus status, wgpu::Device dev, wgpu::StringView message) {
-                    if (status != wgpu::RequestDeviceStatus::Success) {
-                        std::cerr << "Failed to request device: " << (message.data ? message.data : "") << std::endl;
-                        return;
-                    }
+                    if (status != wgpu::RequestDeviceStatus::Success) return;
+                    
                     this->device = dev;
 
                     wgpu::SurfaceCapabilities capabilities;
                     this->surface.GetCapabilities(this->adapter, &capabilities);
                     this->surfaceFormat = capabilities.formats[0];
 
-                    wgpu::SurfaceConfiguration config {
-                        .device = this->device,
-                        .format = this->surfaceFormat,
-                        .width = WIN_WIDTH,
-                        .height = WIN_HEIGHT,
-                        .presentMode = wgpu::PresentMode::Fifo,
-                    };
-                    this->surface.Configure(&config);
                     this->fetchPlanesOnDemand();
                     this->initializeBuffers();
                     this->initializePipeline();
+
+                    onWindowResize(0, nullptr, this);
+                    emscripten_set_resize_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, this, EM_TRUE, onWindowResize);
+
                     emscripten_set_main_loop_arg([](void* arg) {
                         static_cast<Application*>(arg)->renderFrame();
-                    }, this, 0, true);
+                    }, this, 0, false);
                 }
             );
         }
@@ -343,6 +356,26 @@ void Application::updatePlanes(const float* data, int sizeInBytes)
         planes[i] = plane;
         planesCount++;
     }
+}
+
+void Application::onResize(uint32_t width, uint32_t height)
+{
+    if (width == 0 || height == 0 || !device)
+    {
+        std::cout << "Resize failed!" << std::endl;
+    }
+
+    wgpu::SurfaceConfiguration config {
+        .device = device,
+        .format = surfaceFormat,
+        .width = width,
+        .height = height,
+        .presentMode = wgpu::PresentMode::Fifo,
+    };
+    surface.Configure(&config);
+    depthManager = std::make_unique<DepthManager>(DEPTH_TEXTURE_FORMAT, device, width, height);
+    float aspect = static_cast<float>(width) / static_cast<float>(height);
+    projectionMatrix = glm::perspective(FOV, aspect, 0.01f, 1000.0f);
 }
 
 void Application::terminate()
