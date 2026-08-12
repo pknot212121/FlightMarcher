@@ -1,9 +1,18 @@
 #include "application.h"
 
+Application* g_app = nullptr;
+
 int main()
 {
-    auto app = std::make_unique<Application>();
-    app->initialize();
-    app->mainLoop();
-    app->terminate();
+    g_app = new Application();
+    if (!g_app->initialize())
+        return 1;
+
+    #ifndef __EMSCRIPTEN__
+    g_app->mainLoop();
+    g_app->terminate();
+    delete g_app;
+    #endif
+
+    return 0;
 }

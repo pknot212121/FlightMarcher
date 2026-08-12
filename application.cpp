@@ -9,7 +9,8 @@ void Application::initializeBuffers()
     device.GetQueue().WriteBuffer(vertexBuffer, 0, vertexData.data(), vertexData.size() * sizeof(VertexAttributes));
     vertexCount = static_cast<int32_t>(vertexData.size());
 
-    for (int i = 0; i < 100; i++)
+    #ifndef __EMSCRIPTEN__
+    for (int i = 0; i < 1200; i++)
     {
         Airplane plane{};
         vec2 latLon {(i % 10) * 15.0f - 60.0f, (i / 10) * 36.0f - 180.0f};
@@ -18,6 +19,8 @@ void Application::initializeBuffers()
         planes[i] = plane;
         planesCount++;
     }
+    #endif
+    
     instanceBuffer = createBuffer(device, "instance", MAX_PLANES * sizeof(mat4), wgpu::BufferUsage::Storage);
     uniformBuffer = createBuffer(device, "uniform buffer", sizeof(MyUniforms), wgpu::BufferUsage::Uniform);
 
@@ -117,16 +120,7 @@ void Application::handleMouse(vec2 pos)
 
 void Application::renderFrame()
 {
-    if (instance)
-    {
-        instance.ProcessEvents();
-    }
-
-    if (!device || !pipeline)
-    {
-        return;
-    }
-
+    assert(device && pipeline);
     glfwPollEvents();
     processInput();
     #ifndef __EMSCRIPTEN__
@@ -260,6 +254,9 @@ bool Application::initialize()
                     this->fetchPlanesOnDemand();
                     this->initializeBuffers();
                     this->initializePipeline();
+                    emscripten_set_main_loop_arg([](void* arg) {
+                        static_cast<Application*>(arg)->renderFrame();
+                    }, this, 0, true);
                 }
             );
         }
@@ -300,21 +297,12 @@ bool Application::initialize()
 
 void Application::mainLoop()
 {
-    #ifndef __EMSCRIPTEN__
     assert(device);
     assert(pipeline);
-    #endif
-
-    #ifdef __EMSCRIPTEN__
-    emscripten_set_main_loop_arg([](void* arg) {
-        static_cast<Application*>(arg)->renderFrame();
-    }, this, 0, true);
-    #else
     while (!glfwWindowShouldClose(window))
     {
         renderFrame();
     }
-    #endif
 }
 
 void Application::fetchPlanesOnDemand()
