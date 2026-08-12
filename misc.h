@@ -1,5 +1,4 @@
 #include <numeric>
-
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
@@ -10,7 +9,6 @@
 #include <vector>
 #include <filesystem>
 #include <fstream>
-#include <sstream>
 #include <string>
 #include <initializer_list>
 #include <stdexcept>
@@ -21,10 +19,9 @@
 #include <webgpu/webgpu.h>
 #include <webgpu/webgpu_cpp.h>
 
-#ifdef __EMSCRIPTEN__
 #include <emscripten.h>
 #include <emscripten/html5.h>
-#endif
+
 using glm::mat4x4;
 using glm::vec4;
 using glm::vec3;
@@ -294,59 +291,6 @@ inline bool loadGeometryFromObj(const fs::path& path, std::vector<VertexAttribut
     return true;
 }
 
-inline bool loadGeometry(const std::filesystem::path& path, std::vector<float>& pointData, std::vector<uint16_t>& indexData, int dimensions)
-{
-    std::ifstream file(path);
-    if (!file.is_open()) {
-        return false;
-    }
-
-    pointData.clear();
-    indexData.clear();
-
-    enum class Section {
-        None,
-        Points,
-        Indices,
-    };
-    Section currentSection = Section::None;
-
-    float value;
-    uint16_t index;
-    std::string line;
-    while (!file.eof()) {
-        getline(file, line);
-
-        if (!line.empty() && line.back() == '\r') {
-            line.pop_back();
-        }
-        if (line == "[points]") {
-            currentSection = Section::Points; 
-        }
-        else if (line == "[indices]") {
-            currentSection = Section::Indices;
-        }
-        else if (line[0] == '#' || line.empty()) {
-            
-        }
-        else if (currentSection == Section::Points) {
-            std::istringstream iss(line);
-            for (int i = 0; i < dimensions + 3; ++i) {
-                iss >> value;
-                pointData.push_back(value);
-            }
-        }
-        else if (currentSection == Section::Indices) {
-            std::istringstream iss(line);
-            for (int i = 0; i < 3; ++i) {
-                iss >> index;
-                indexData.push_back(index);
-            }
-        }
-    }
-    return true;
-}
-
 inline wgpu::Buffer createBuffer(const wgpu::Device& device, std::string_view label, uint64_t size_in_bytes, wgpu::BufferUsage usage)
 {
     wgpu::BufferDescriptor desc{
@@ -368,12 +312,6 @@ inline wgpu::ShaderModule createShaderModule(const wgpu::Device& device, std::st
     };
 
     return device.CreateShaderModule(&desc);
-}
-
-inline uint32_t ceilToNextMultiple(uint32_t value, uint32_t step)
-{
-    uint32_t divideAndCeil = value / step + (value % step == 0 ? 0 : 1);
-    return step * divideAndCeil;
 }
 
 inline wgpu::ShaderModule loadShaderModule(const std::filesystem::path& path, wgpu::Device device)

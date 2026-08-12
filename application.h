@@ -5,14 +5,9 @@
 #include <webgpu/webgpu_cpp.h>
 #include <glm/gtc/quaternion.hpp>
 
-#ifdef __EMSCRIPTEN__
 #include <emscripten.h>
 #include <emscripten/html5.h>
 #include <emscripten/fetch.h>
-#else
-#include <webgpu/webgpu_glfw.h>
-#include <dawn/webgpu_cpp_print.h>
-#endif
 
 constexpr float PI = 3.14159265358979323846f;
 constexpr uint32_t WIN_WIDTH = 512;
@@ -32,10 +27,9 @@ class Application
     public:
         void initializeBuffers();
         void initializePipeline();
+        bool initializeGLFW();
         bool initialize();
-        void mainLoop();
         void renderFrame();
-        void terminate();
         void fetchPlanesOnDemand();
         void onResize(uint32_t width, uint32_t height);
     private:

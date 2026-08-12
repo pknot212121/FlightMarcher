@@ -8,18 +8,6 @@ void Application::initializeBuffers()
     vertexBuffer = createBuffer(device, "vertex_buffer", vertexData.size() * sizeof(VertexAttributes), wgpu::BufferUsage::Vertex);
     device.GetQueue().WriteBuffer(vertexBuffer, 0, vertexData.data(), vertexData.size() * sizeof(VertexAttributes));
     vertexCount = static_cast<int32_t>(vertexData.size());
-
-    #ifndef __EMSCRIPTEN__
-    for (int i = 0; i < 1200; i++)
-    {
-        Airplane plane{};
-        vec2 latLon {(i % 10) * 15.0f - 60.0f, (i / 10) * 36.0f - 180.0f};
-        plane.setFlightData(latLon, 5.0f, (i * 25) % 360);
-        plane.setScale(1.5f);
-        planes[i] = plane;
-        planesCount++;
-    }
-    #endif
     
     instanceBuffer = createBuffer(device, "instance", MAX_PLANES * sizeof(mat4), wgpu::BufferUsage::Storage);
     uniformBuffer = createBuffer(device, "uniform buffer", sizeof(MyUniforms), wgpu::BufferUsage::Uniform);
@@ -83,6 +71,33 @@ void Application::initializePipeline()
     pipeline = device.CreateRenderPipeline(&pipelineDesc);
 }
 
+bool Application::initializeGLFW()
+{
+    glfwSetErrorCallback(glfwError);
+    if (!glfwInit())
+    {
+        std::cerr << "Failed to initialize GLFW.";
+        return false;
+    }
+
+    glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+    window = glfwCreateWindow(WIN_WIDTH, WIN_HEIGHT, "Triangle", nullptr, nullptr);
+    if (!window)
+    {
+        std::cerr << "Unable to create GLFW Window";
+        return false;
+    }
+    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+    glfwSetWindowUserPointer(window, this);
+    glfwSetCursorPosCallback(window, [](GLFWwindow* w, double xpos, double ypos)
+    {
+        auto app = static_cast<Application*>(glfwGetWindowUserPointer(w));
+        if (app)
+            app->handleMouse({xpos, ypos});
+    });
+    return true;
+}
+
 void Application::processInput()
 {
     if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
@@ -123,9 +138,6 @@ void Application::renderFrame()
     assert(device && pipeline);
     glfwPollEvents();
     processInput();
-    #ifndef __EMSCRIPTEN__
-    device.Tick(); 
-    #endif
 
     mat4x4 V = glm::lookAt(cameraPos, cameraPos + cameraFront, CAMERA_UP);
     MyUniforms uniformValues {
@@ -174,14 +186,8 @@ void Application::renderFrame()
 
     auto commands = encoder.Finish();
     device.GetQueue().Submit(1, &commands);
-
-    #ifndef __EMSCRIPTEN__
-    surface.Present();
-    #endif
 }
 
-
-#ifdef __EMSCRIPTEN__
 static EM_BOOL onWindowResize(int eventType, const EmscriptenUiEvent* uiEvent, void* userData)
 {
     auto app = static_cast<Application*>(userData);
@@ -198,36 +204,13 @@ static EM_BOOL onWindowResize(int eventType, const EmscriptenUiEvent* uiEvent, v
     app->onResize(width, height);
     return EM_TRUE;
 }
-#endif
 
 bool Application::initialize()
 {
-    glfwSetErrorCallback(glfwError);
-    if (!glfwInit())
-    {
-        std::cerr << "Failed to initialize GLFW.";
+    if (!initializeGLFW())
         return false;
-    }
-
-    glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-    window = glfwCreateWindow(WIN_WIDTH, WIN_HEIGHT, "Triangle", nullptr, nullptr);
-    if (!window)
-    {
-        std::cerr << "Unable to create GLFW Window";
-        return false;
-    }
-    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
-    glfwSetWindowUserPointer(window, this);
-    glfwSetCursorPosCallback(window, [](GLFWwindow* w, double xpos, double ypos)
-    {
-        auto app = static_cast<Application*>(glfwGetWindowUserPointer(w));
-        if (app)
-            app->handleMouse({xpos, ypos});
-    });
 
     instance = wgpu::CreateInstance();
-
-#ifdef __EMSCRIPTEN__
     wgpu::EmscriptenSurfaceSourceCanvasHTMLSelector canvasDesc{};
     canvasDesc.selector = "#canvas";
     wgpu::SurfaceDescriptor surfaceDesc{};
@@ -239,88 +222,39 @@ bool Application::initialize()
         .compatibleSurface = surface,
     };
 
-    instance.RequestAdapter(&adapterOpts, wgpu::CallbackMode::AllowSpontaneous,
-        [this](wgpu::RequestAdapterStatus status, wgpu::Adapter ad, wgpu::StringView message) {
-            if (status != wgpu::RequestAdapterStatus::Success) {
-                std::cerr << "Failed to request adapter: " << (message.data ? message.data : "") << std::endl;
-                return;
-            }
-            this->adapter = ad;
-
-            wgpu::DeviceDescriptor deviceDesc{};
-            deviceDesc.label = "Primary device";
-
-            this->adapter.RequestDevice(&deviceDesc, wgpu::CallbackMode::AllowSpontaneous,
-                [this](wgpu::RequestDeviceStatus status, wgpu::Device dev, wgpu::StringView message) {
-                    if (status != wgpu::RequestDeviceStatus::Success) return;
-                    
-                    this->device = dev;
-
-                    wgpu::SurfaceCapabilities capabilities;
-                    this->surface.GetCapabilities(this->adapter, &capabilities);
-                    this->surfaceFormat = capabilities.formats[0];
-
-                    this->fetchPlanesOnDemand();
-                    this->initializeBuffers();
-                    this->initializePipeline();
-
-                    onWindowResize(0, nullptr, this);
-                    emscripten_set_resize_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, this, EM_TRUE, onWindowResize);
-
-                    emscripten_set_main_loop_arg([](void* arg) {
-                        static_cast<Application*>(arg)->renderFrame();
-                    }, this, 0, false);
-                }
-            );
-        }
-    );
-#else
-    surface = wgpu::glfw::CreateSurfaceForWindow(instance, window);
-
-    wgpu::RequestAdapterOptions adapterOpts {
-        .powerPreference = wgpu::PowerPreference::HighPerformance,
-        .compatibleSurface = surface,
-    };
     instance.RequestAdapter(&adapterOpts, wgpu::CallbackMode::AllowSpontaneous, adapterRequest, &adapter);
-
+    
     wgpu::DeviceDescriptor deviceDesc{};
     deviceDesc.label = "Primary device";
     deviceDesc.SetDeviceLostCallback(wgpu::CallbackMode::AllowProcessEvents, deviceLost);
     deviceDesc.SetUncapturedErrorCallback(uncapturedError);
-    device = adapter.CreateDevice(&deviceDesc);
 
-    wgpu::SurfaceCapabilities capabilities;
-    surface.GetCapabilities(adapter, &capabilities);
-    surfaceFormat = capabilities.formats[0];
-    wgpu::SurfaceConfiguration config {
-        .device = device,
-        .format = surfaceFormat,
-        .width = WIN_WIDTH,
-        .height = WIN_HEIGHT,
-        .presentMode = wgpu::PresentMode::Fifo,
-    };
-    surface.Configure(&config);
+    this->adapter.RequestDevice(&deviceDesc, wgpu::CallbackMode::AllowSpontaneous,
+    [this](wgpu::RequestDeviceStatus status, wgpu::Device dev, wgpu::StringView message) {
+        if (status != wgpu::RequestDeviceStatus::Success) return;
+        
+        this->device = dev;
 
-    initializeBuffers();
-    initializePipeline();
-#endif
+        wgpu::SurfaceCapabilities capabilities;
+        this->surface.GetCapabilities(this->adapter, &capabilities);
+        this->surfaceFormat = capabilities.formats[0];
 
+        this->fetchPlanesOnDemand();
+        this->initializeBuffers();
+        this->initializePipeline();
+
+        onWindowResize(0, nullptr, this);
+        emscripten_set_resize_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, this, EM_TRUE, onWindowResize);
+
+        emscripten_set_main_loop_arg([](void* arg) {
+            static_cast<Application*>(arg)->renderFrame();
+        }, this, 0, false);
+    });
     return true;
-}
-
-void Application::mainLoop()
-{
-    assert(device);
-    assert(pipeline);
-    while (!glfwWindowShouldClose(window))
-    {
-        renderFrame();
-    }
 }
 
 void Application::fetchPlanesOnDemand()
 {
-    #ifdef __EMSCRIPTEN__
     emscripten_fetch_attr_t attr;
     emscripten_fetch_attr_init(&attr);
     strcpy(attr.requestMethod, "GET");
@@ -337,9 +271,6 @@ void Application::fetchPlanesOnDemand()
         emscripten_fetch_close(fetch);
     };
     emscripten_fetch(&attr, "http://127.0.0.1:8080/api/planes");
-    #else
-    std::cout << "Receiver does not work on desktop!!!\n";
-    #endif
 }
 
 
@@ -376,16 +307,4 @@ void Application::onResize(uint32_t width, uint32_t height)
     depthManager = std::make_unique<DepthManager>(DEPTH_TEXTURE_FORMAT, device, width, height);
     float aspect = static_cast<float>(width) / static_cast<float>(height);
     projectionMatrix = glm::perspective(FOV, aspect, 0.01f, 1000.0f);
-}
-
-void Application::terminate()
-{
-    surface.Unconfigure();
-    surface = nullptr;
-    device.Destroy();
-    vertexBuffer.Destroy();
-    instanceBuffer.Destroy();
-    uniformBuffer.Destroy();
-    glfwDestroyWindow(window);
-    glfwTerminate();
 }
