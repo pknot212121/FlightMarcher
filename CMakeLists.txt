@@ -41,6 +41,7 @@ if(EMSCRIPTEN)
         "--use-port=emdawnwebgpu"
         "-sUSE_GLFW=3"
         "-sASYNCIFY"
+        "-sFETCH=1"
         "--preload-file" "${CMAKE_CURRENT_SOURCE_DIR}/resources@resources"
         "--shell-file" "${CMAKE_CURRENT_SOURCE_DIR}/shell.html"
     )

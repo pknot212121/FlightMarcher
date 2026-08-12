@@ -8,3 +8,5 @@ dawn
 *.obj
 *.mtl
 .vscode/
+.clangd/
+.clangd

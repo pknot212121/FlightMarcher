@@ -23,7 +23,7 @@ class Airplane
         vec2 latLon {0.0f};
         float altitude = 0.0f;
         float heading = 0.0f;
-        float scale = 1.0f;
+        float scale = 0.1f;
         mat4 cachedModelMatrix {1.0f};
         bool changed = true;
 };

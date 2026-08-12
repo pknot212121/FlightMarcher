@@ -15,9 +15,10 @@ void Application::initializeBuffers()
         vec2 latLon {(i % 10) * 15.0f - 60.0f, (i / 10) * 36.0f - 180.0f};
         plane.setFlightData(latLon, 5.0f, (i * 25) % 360);
         plane.setScale(1.5f);
-        planes.push_back(plane);
+        planes[i] = plane;
+        planesCount++;
     }
-    instanceBuffer = createBuffer(device, "instance", planes.size() * sizeof(mat4), wgpu::BufferUsage::Storage);
+    instanceBuffer = createBuffer(device, "instance", MAX_PLANES * sizeof(mat4), wgpu::BufferUsage::Storage);
     uniformBuffer = createBuffer(device, "uniform buffer", sizeof(MyUniforms), wgpu::BufferUsage::Uniform);
 
     wgpu::Limits limits;
@@ -54,7 +55,7 @@ void Application::initializePipeline()
     };
 
     mainBindGroup.addBuffer(0, uniformBuffer, sizeof(MyUniforms), wgpu::BufferBindingType::Uniform);
-    mainBindGroup.addBuffer(1, instanceBuffer, planes.size() * sizeof(mat4), wgpu::BufferBindingType::ReadOnlyStorage, wgpu::ShaderStage::Vertex);
+    mainBindGroup.addBuffer(1, instanceBuffer, MAX_PLANES * sizeof(mat4), wgpu::BufferBindingType::ReadOnlyStorage, wgpu::ShaderStage::Vertex);
     mainBindGroup.build(device);
     wgpu::BindGroupLayout bindGroupLayout = mainBindGroup.getLayout();
     wgpu::PipelineLayoutDescriptor layoutDesc {
@@ -89,6 +90,9 @@ void Application::processInput()
         cameraPos += glm::normalize(glm::cross(cameraFront, CAMERA_UP)) * CAMERA_SPEED;
     if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
         cameraPos -= glm::normalize(glm::cross(cameraFront, CAMERA_UP)) * CAMERA_SPEED;
+    if (glfwGetKey(window, GLFW_KEY_R) == GLFW_PRESS) {
+        fetchPlanesOnDemand();
+}
 }
 
 void Application::handleMouse(vec2 pos)
@@ -113,6 +117,11 @@ void Application::handleMouse(vec2 pos)
 
 void Application::renderFrame()
 {
+    if (instance)
+    {
+        instance.ProcessEvents();
+    }
+
     if (!device || !pipeline)
     {
         return;
@@ -120,9 +129,9 @@ void Application::renderFrame()
 
     glfwPollEvents();
     processInput();
-#ifndef __EMSCRIPTEN__
+    #ifndef __EMSCRIPTEN__
     device.Tick(); 
-#endif
+    #endif
 
     mat4x4 V = glm::lookAt(cameraPos, cameraPos + cameraFront, CAMERA_UP);
     MyUniforms uniformValues {
@@ -131,22 +140,16 @@ void Application::renderFrame()
     };
     device.GetQueue().WriteBuffer(uniformBuffer, 0, &uniformValues, sizeof(MyUniforms));
 
-    for (auto& plane : planes)
+    for (int i = 0; i < planesCount; i++)
     {
-        plane.fly({0.0f, 0.05f});
+        planes[i].fly({0.0f, 0.05f});
+        instanceData[i] = planes[i].getModelMatrix();
     }
-
-    std::vector<glm::mat4> instanceData;
-    instanceData.reserve(planes.size());
-    for (auto& plane : planes)
-    {
-        instanceData.push_back(plane.getModelMatrix());
-    }
-
+ 
     device.GetQueue().WriteBuffer(
         instanceBuffer, 0, 
-        instanceData.data(), 
-        instanceData.size() * sizeof(glm::mat4)
+        &instanceData, 
+        planesCount * sizeof(glm::mat4)
     );
 
     auto encoder = device.CreateCommandEncoder();
@@ -172,15 +175,15 @@ void Application::renderFrame()
     pass.SetPipeline(pipeline);
     pass.SetVertexBuffer(0, vertexBuffer, 0, vertexBuffer.GetSize());
     mainBindGroup.bind(pass, 0);
-    pass.Draw(vertexCount, static_cast<uint32_t>(planes.size()), 0, 0);
+    pass.Draw(vertexCount, static_cast<uint32_t>(planesCount), 0, 0);
     pass.End();
 
     auto commands = encoder.Finish();
     device.GetQueue().Submit(1, &commands);
 
-#ifndef __EMSCRIPTEN__
+    #ifndef __EMSCRIPTEN__
     surface.Present();
-#endif
+    #endif
 }
 
 
@@ -254,7 +257,7 @@ bool Application::initialize()
                         .presentMode = wgpu::PresentMode::Fifo,
                     };
                     this->surface.Configure(&config);
-
+                    this->fetchPlanesOnDemand();
                     this->initializeBuffers();
                     this->initializePipeline();
                 }
@@ -314,12 +317,54 @@ void Application::mainLoop()
     #endif
 }
 
+void Application::fetchPlanesOnDemand()
+{
+    #ifdef __EMSCRIPTEN__
+    emscripten_fetch_attr_t attr;
+    emscripten_fetch_attr_init(&attr);
+    strcpy(attr.requestMethod, "GET");
+    attr.attributes = EMSCRIPTEN_FETCH_LOAD_TO_MEMORY;
+    attr.userData = this;
+    attr.onsuccess = [](emscripten_fetch_t* fetch) {
+        auto app = static_cast<Application*>(fetch->userData);
+        const float* planeData = reinterpret_cast<const float*>(fetch->data);
+        app->updatePlanes(planeData, fetch->numBytes);
+        emscripten_fetch_close(fetch);
+    };
+    attr.onerror = [](emscripten_fetch_t* fetch) {
+        std::cerr << "[Fetch Error] Data cannot be imported from API HTTP (status: " << fetch->status << ")\n";
+        emscripten_fetch_close(fetch);
+    };
+    emscripten_fetch(&attr, "http://127.0.0.1:8080/api/planes");
+    #else
+    std::cout << "Receiver does not work on desktop!!!\n";
+    #endif
+}
+
+
+void Application::updatePlanes(const float* data, int sizeInBytes)
+{
+    planesCount = 0;
+    for (int i = 0; i < (sizeInBytes / (4 * sizeof(float))); i++)
+    {
+        Airplane plane{};
+        plane.setFlightData(
+            {data[i * 4 + 0], data[i * 4 + 1]},
+            data[i * 4 + 2],
+            data[i * 4 + 3]);
+        planes[i] = plane;
+        planesCount++;
+    }
+}
+
 void Application::terminate()
 {
     surface.Unconfigure();
     surface = nullptr;
     device.Destroy();
     vertexBuffer.Destroy();
+    instanceBuffer.Destroy();
+    uniformBuffer.Destroy();
     glfwDestroyWindow(window);
     glfwTerminate();
 }

@@ -8,6 +8,7 @@
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
 #include <emscripten/html5.h>
+#include <emscripten/fetch.h>
 #else
 #include <webgpu/webgpu_glfw.h>
 #include <dawn/webgpu_cpp_print.h>
@@ -35,10 +36,11 @@ class Application
         void mainLoop();
         void renderFrame();
         void terminate();
-
+        void fetchPlanesOnDemand();
     private:
         void processInput();
         void handleMouse(vec2 pos);
+        void updatePlanes(const float* data, int sizeInBytes);
         struct MyUniforms
         {
             mat4x4 projectionMatrix;
@@ -53,16 +55,21 @@ class Application
         wgpu::Adapter adapter;
         wgpu::Device device;
         wgpu::RenderPipeline pipeline;
-        wgpu::Buffer vertexBuffer;
         int32_t vertexCount = 0;
         std::unique_ptr<DepthManager> depthManager;
         BindGroupManager mainBindGroup;
-        std::vector<Airplane> planes;
+        
+        wgpu::Buffer vertexBuffer;
         wgpu::Buffer instanceBuffer;
         wgpu::Buffer uniformBuffer;
+        
+        uint16_t planesCount = 0;
+        Airplane planes[MAX_PLANES];
+        glm::mat4 instanceData[MAX_PLANES];
+        mat4x4 projectionMatrix;
+
         vec3 cameraPos {0.0f, 0.0f, 200.0f};
         vec3 cameraFront {0.0f, 0.0f, -1.0f};
-        mat4x4 projectionMatrix;
         vec2 yawPitch {-90.0f, 0.0f};
         vec2 lastXY = {WIN_WIDTH / 2.0f, WIN_HEIGHT / 2.0f};
         bool firstClick = true;

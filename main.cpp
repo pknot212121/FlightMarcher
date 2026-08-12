@@ -2,8 +2,8 @@
 
 int main()
 {
-    Application app;
-    app.initialize();
-    app.mainLoop();
-    app.terminate();
+    auto app = std::make_unique<Application>();
+    app->initialize();
+    app->mainLoop();
+    app->terminate();
 }

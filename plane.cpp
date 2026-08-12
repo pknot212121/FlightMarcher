@@ -29,12 +29,11 @@ mat4 Airplane::getModelMatrix()
 
     float latRad = glm::radians(latLon.x);
     float lonRad = glm::radians(latLon.y);
-    float r = PLANET_RADIUS + altitude;
 
     vec3 pos {
-        r * std::cos(latRad) * std::cos(lonRad),
-        r * std::sin(latRad),
-        r * std::cos(latRad) * std::sin(lonRad),
+        PLANET_RADIUS * std::cos(latRad) * std::cos(lonRad),
+        PLANET_RADIUS * std::sin(latRad),
+        PLANET_RADIUS * std::cos(latRad) * std::sin(lonRad),
     };
 
     vec3 up = glm::normalize(pos);
