@@ -9,19 +9,20 @@ using glm::mat4;
 
 constexpr float PLANET_RADIUS = 100.0f;
 constexpr vec3 WORLD_NORTH {0.0f, 1.0f, 0.0f};
-
+constexpr float FRAMES = 60.0;
 
 class Airplane
 {
     public:
         Airplane(){};
-        void setFlightData(vec2 latLon, float altitude, float heading);
+        void setFlightData(vec2 latLon, float velocity, float heading);
+        void fly();
         void fly(vec2 delta);
         void setScale(float scale);
         mat4 getModelMatrix();
     private:
         vec2 latLon {0.0f};
-        float altitude = 0.0f;
+        float velocity = 0.0f;
         float heading = 0.0f;
         float scale = 0.1f;
         mat4 cachedModelMatrix {1.0f};

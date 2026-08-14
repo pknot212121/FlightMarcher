@@ -20,6 +20,11 @@
             display: block;
         }
     </style>
+    <script>
+        if (navigator.gpu) {
+            navigator.gpu.requestAdapter().catch(function(){});
+        }
+    </script>
 </head>
 <body>
 

@@ -5,6 +5,7 @@ project(App LANGUAGES CXX)
 
 
 set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_BUILD_TYPE Release)
 
 set(FETCHCONTENT_QUIET OFF)
 
@@ -35,6 +36,7 @@ add_executable(App "main.cpp"
 if(EMSCRIPTEN)
     target_compile_options(App PRIVATE
         "--use-port=emdawnwebgpu"
+        -O3
     )
 
     target_link_options(App PRIVATE
@@ -44,6 +46,7 @@ if(EMSCRIPTEN)
         "-sFETCH=1"
         "--preload-file" "${CMAKE_CURRENT_SOURCE_DIR}/resources@resources"
         "--shell-file" "${CMAKE_CURRENT_SOURCE_DIR}/shell.html"
+        -O3
     )
     target_link_libraries(App PRIVATE glm::glm tinyobjloader)
 

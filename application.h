@@ -4,7 +4,6 @@
 #include "plane.h"
 #include <webgpu/webgpu_cpp.h>
 #include <glm/gtc/quaternion.hpp>
-
 #include <emscripten.h>
 #include <emscripten/html5.h>
 #include <emscripten/fetch.h>
@@ -32,6 +31,8 @@ class Application
         void renderFrame();
         void fetchPlanesOnDemand();
         void onResize(uint32_t width, uint32_t height);
+        void onAdapterReady(wgpu::RequestAdapterStatus status, wgpu::Adapter adapt, wgpu::StringView message);
+        void onDeviceReady(wgpu::RequestDeviceStatus status, wgpu::Device dev, wgpu::StringView message);
     private:
         void processInput();
         void handleMouse(vec2 pos);

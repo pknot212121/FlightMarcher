@@ -5,6 +5,7 @@
 #include <cstdio>
 #include <iostream>
 #include <string_view>
+#include <chrono>
 
 #include <vector>
 #include <filesystem>
@@ -27,6 +28,20 @@ using glm::vec4;
 using glm::vec3;
 
 namespace fs = std::filesystem;
+
+struct Timer
+{
+    std::string_view name;
+    std::chrono::high_resolution_clock::time_point start;
+
+    Timer(std::string_view name) : name(name), start(std::chrono::high_resolution_clock::now()) {}
+    ~Timer()
+    {
+        auto end = std::chrono::high_resolution_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
+        std::cout << "[Timer] " << name << ": " << duration << " ms" << std::endl; 
+    }
+};
 
 class DynamicVertexLayout 
 {
@@ -208,6 +223,7 @@ struct VertexAttributes
 };
 
 inline bool loadGeometryFromObj(const fs::path& path, std::vector<VertexAttributes>& vertexData) {
+    Timer t8("loadGeometryfromObj");
     tinyobj::ObjReader reader;
     tinyobj::ObjReaderConfig readerConfig;
     readerConfig.triangulate = true;
@@ -328,7 +344,7 @@ inline wgpu::ShaderModule loadShaderModule(const std::filesystem::path& path, wg
     return createShaderModule(device, "shader from file", shaderSource);
 }
 
-inline void glfwError [[noreturn]] (int code, const char* message)
+inline void glfwError (int code, const char* message)
 {
     std::cerr << "GLFW error: " << code << ":" << message;
     assert(false);
@@ -355,7 +371,7 @@ inline void deviceLost([[maybe_unused]] const wgpu::Device& device, wgpu::Device
     std::cout << std::endl;
 }
 
-inline void uncapturedError [[noreturn]] ([[maybe_unused]] const wgpu::Device& device, wgpu::ErrorType type, struct wgpu::StringView message)
+inline void uncapturedError ([[maybe_unused]] const wgpu::Device& device, wgpu::ErrorType type, struct wgpu::StringView message)
 {
     std::cout << "uncaptured error: \n";
     if (message.length > 0)

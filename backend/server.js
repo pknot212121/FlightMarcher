@@ -50,12 +50,12 @@ async function updateCacheFromOpenSky() {
         for (const plane of states) {
             const lon = plane[5] ?? 0.0;
             const lat = plane[6] ?? 0.0;
-            const alt = plane[7] ?? plane[13] ?? 0.0;
+            const vel = plane[9] ?? 0.0;
             const heading = plane[10] ?? 0.0;
 
             buffer.writeFloatLE(lat, offset);
             buffer.writeFloatLE(lon, offset + 4);
-            buffer.writeFloatLE(alt, offset + 8);
+            buffer.writeFloatLE(vel, offset + 8);
             buffer.writeFloatLE(heading, offset + 12);
             offset += 16;
         }

@@ -1,7 +1,9 @@
 #include "application.h"
+#include "webgpu/webgpu_cpp.h"
 
 void Application::initializeBuffers()
 {
+    Timer t1("initializeBuffers");
     std::vector<VertexAttributes> vertexData;
     bool success = loadGeometryFromObj(RESOURCE_DIR "/plane2.obj", vertexData);
     assert(success);
@@ -28,6 +30,7 @@ void Application::initializeBuffers()
 
 void Application::initializePipeline()
 {
+    Timer t2("initializePipeline");
     assert(surfaceFormat != wgpu::TextureFormat::Undefined);
     assert(vertexBuffer);
     auto shader = loadShaderModule(RESOURCE_DIR "/shader.wgsl", device);
@@ -73,6 +76,7 @@ void Application::initializePipeline()
 
 bool Application::initializeGLFW()
 {
+    Timer t3("initializeGLFW");
     glfwSetErrorCallback(glfwError);
     if (!glfwInit())
     {
@@ -98,39 +102,92 @@ bool Application::initializeGLFW()
     return true;
 }
 
-void Application::processInput()
+static EM_BOOL onWindowResize(int eventType, const EmscriptenUiEvent* uiEvent, void* userData)
 {
-    if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
-        cameraPos += CAMERA_SPEED * cameraFront;
-    if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
-        cameraPos -= CAMERA_SPEED * cameraFront;
-    if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
-        cameraPos += glm::normalize(glm::cross(cameraFront, CAMERA_UP)) * CAMERA_SPEED;
-    if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
-        cameraPos -= glm::normalize(glm::cross(cameraFront, CAMERA_UP)) * CAMERA_SPEED;
-    if (glfwGetKey(window, GLFW_KEY_R) == GLFW_PRESS) {
-        fetchPlanesOnDemand();
-}
+    auto app = static_cast<Application*>(userData);
+    if (!app) return EM_FALSE;
+
+    double cssWidth, cssHeight;
+    emscripten_get_element_css_size("#canvas", &cssWidth, &cssHeight);
+    double dpr = emscripten_get_device_pixel_ratio();
+
+    uint32_t width = static_cast<uint32_t>(cssWidth * dpr);
+    uint32_t height = static_cast<uint32_t>(cssHeight * dpr);
+
+    emscripten_set_canvas_element_size("#canvas", width, height);
+    app->onResize(width, height);
+    return EM_TRUE;
 }
 
-void Application::handleMouse(vec2 pos)
+bool Application::initialize()
 {
-    if (firstClick)
+    Timer t4("initialize");
+    if (!initializeGLFW())
+        return false;
+
+    instance = wgpu::CreateInstance();
+    wgpu::EmscriptenSurfaceSourceCanvasHTMLSelector canvasDesc{};
+    canvasDesc.selector = "#canvas";
+    wgpu::SurfaceDescriptor surfaceDesc{};
+    surfaceDesc.nextInChain = &canvasDesc;
+    surface = instance.CreateSurface(&surfaceDesc);
+
+    wgpu::RequestAdapterOptions adapterOpts {
+        .powerPreference = wgpu::PowerPreference::HighPerformance,
+        .compatibleSurface = surface,
+    };
+
+    instance.RequestAdapter(&adapterOpts, wgpu::CallbackMode::AllowSpontaneous,
+        [this](auto status, auto adapt, wgpu::StringView msg) {
+            this->onAdapterReady(status, adapt, msg);
+        }
+    );
+    return true;
+}
+
+void Application::onAdapterReady(wgpu::RequestAdapterStatus status, wgpu::Adapter adapt, wgpu::StringView message)
+{
+    Timer t5("onAdapterReady");
+    if (status != wgpu::RequestAdapterStatus::Success)
     {
-        lastXY = pos;
-        firstClick = false;
+        std::cerr << "Adapter request failed: " << message.data << "\n";
+        return;
     }
+    this->adapter = adapt;
+    wgpu::DeviceDescriptor deviceDesc{};
+    deviceDesc.label = "Primary device";
+    deviceDesc.SetDeviceLostCallback(wgpu::CallbackMode::AllowProcessEvents, deviceLost);
+    deviceDesc.SetUncapturedErrorCallback(uncapturedError);
+    this->adapter.RequestDevice(&deviceDesc, wgpu::CallbackMode::AllowSpontaneous,
+        [this](auto status, auto dev, wgpu::StringView msg) {
+            this->onDeviceReady(status, dev, msg);
+        }
+    );
+}
 
-    vec2 offset = lastXY - pos;
-    lastXY = pos;
-    offset *= SENSITIVITY;
-    
-    quat qYaw = glm::angleAxis(glm::radians(-offset.x), vec3(0.0f, 1.0f, 0.0f));
-    vec3 right = glm::normalize(glm::cross(cameraFront, CAMERA_UP));
-    quat qPitch = glm::angleAxis(glm::radians(offset.y), right);
+void Application::onDeviceReady(wgpu::RequestDeviceStatus status, wgpu::Device dev, wgpu::StringView message)
+{
+    Timer t6("onDeviceReady");
+    if (status != wgpu::RequestDeviceStatus::Success)
+    {
+        std::cerr << "Device request failed: " << message.data << "\n";
+        return;
+    }
+    this->device = dev;
+    wgpu::SurfaceCapabilities capabilities;
+    surface.GetCapabilities(adapter, &capabilities);
+    surfaceFormat = capabilities.formats[0];
 
-    quat totalRotation = qPitch * qYaw;
-    cameraFront = glm::normalize(totalRotation * cameraFront);
+    fetchPlanesOnDemand();
+    initializeBuffers();
+    initializePipeline();
+
+    onWindowResize(0, nullptr, this);
+    emscripten_set_resize_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, this, EM_TRUE, onWindowResize);
+
+    emscripten_set_main_loop_arg([](void* arg) {
+        static_cast<Application*>(arg)->renderFrame();
+    }, this, 0, false);
 }
 
 void Application::renderFrame()
@@ -148,7 +205,7 @@ void Application::renderFrame()
 
     for (int i = 0; i < planesCount; i++)
     {
-        planes[i].fly({0.0f, 0.05f});
+        planes[i].fly();
         instanceData[i] = planes[i].getModelMatrix();
     }
  
@@ -188,73 +245,9 @@ void Application::renderFrame()
     device.GetQueue().Submit(1, &commands);
 }
 
-static EM_BOOL onWindowResize(int eventType, const EmscriptenUiEvent* uiEvent, void* userData)
-{
-    auto app = static_cast<Application*>(userData);
-    if (!app) return EM_FALSE;
-
-    double cssWidth, cssHeight;
-    emscripten_get_element_css_size("#canvas", &cssWidth, &cssHeight);
-    double dpr = emscripten_get_device_pixel_ratio();
-
-    uint32_t width = static_cast<uint32_t>(cssWidth * dpr);
-    uint32_t height = static_cast<uint32_t>(cssHeight * dpr);
-
-    emscripten_set_canvas_element_size("#canvas", width, height);
-    app->onResize(width, height);
-    return EM_TRUE;
-}
-
-bool Application::initialize()
-{
-    if (!initializeGLFW())
-        return false;
-
-    instance = wgpu::CreateInstance();
-    wgpu::EmscriptenSurfaceSourceCanvasHTMLSelector canvasDesc{};
-    canvasDesc.selector = "#canvas";
-    wgpu::SurfaceDescriptor surfaceDesc{};
-    surfaceDesc.nextInChain = &canvasDesc;
-    surface = instance.CreateSurface(&surfaceDesc);
-
-    wgpu::RequestAdapterOptions adapterOpts {
-        .powerPreference = wgpu::PowerPreference::HighPerformance,
-        .compatibleSurface = surface,
-    };
-
-    instance.RequestAdapter(&adapterOpts, wgpu::CallbackMode::AllowSpontaneous, adapterRequest, &adapter);
-    
-    wgpu::DeviceDescriptor deviceDesc{};
-    deviceDesc.label = "Primary device";
-    deviceDesc.SetDeviceLostCallback(wgpu::CallbackMode::AllowProcessEvents, deviceLost);
-    deviceDesc.SetUncapturedErrorCallback(uncapturedError);
-
-    this->adapter.RequestDevice(&deviceDesc, wgpu::CallbackMode::AllowSpontaneous,
-    [this](wgpu::RequestDeviceStatus status, wgpu::Device dev, wgpu::StringView message) {
-        if (status != wgpu::RequestDeviceStatus::Success) return;
-        
-        this->device = dev;
-
-        wgpu::SurfaceCapabilities capabilities;
-        this->surface.GetCapabilities(this->adapter, &capabilities);
-        this->surfaceFormat = capabilities.formats[0];
-
-        this->fetchPlanesOnDemand();
-        this->initializeBuffers();
-        this->initializePipeline();
-
-        onWindowResize(0, nullptr, this);
-        emscripten_set_resize_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, this, EM_TRUE, onWindowResize);
-
-        emscripten_set_main_loop_arg([](void* arg) {
-            static_cast<Application*>(arg)->renderFrame();
-        }, this, 0, false);
-    });
-    return true;
-}
-
 void Application::fetchPlanesOnDemand()
 {
+    Timer t("fetchPlanes");
     emscripten_fetch_attr_t attr;
     emscripten_fetch_attr_init(&attr);
     strcpy(attr.requestMethod, "GET");
@@ -294,6 +287,7 @@ void Application::onResize(uint32_t width, uint32_t height)
     if (width == 0 || height == 0 || !device)
     {
         std::cout << "Resize failed!" << std::endl;
+        return;
     }
 
     wgpu::SurfaceConfiguration config {
@@ -307,4 +301,39 @@ void Application::onResize(uint32_t width, uint32_t height)
     depthManager = std::make_unique<DepthManager>(DEPTH_TEXTURE_FORMAT, device, width, height);
     float aspect = static_cast<float>(width) / static_cast<float>(height);
     projectionMatrix = glm::perspective(FOV, aspect, 0.01f, 1000.0f);
+}
+
+void Application::processInput()
+{
+    if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
+        cameraPos += CAMERA_SPEED * cameraFront;
+    if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
+        cameraPos -= CAMERA_SPEED * cameraFront;
+    if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
+        cameraPos += glm::normalize(glm::cross(cameraFront, CAMERA_UP)) * CAMERA_SPEED;
+    if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
+        cameraPos -= glm::normalize(glm::cross(cameraFront, CAMERA_UP)) * CAMERA_SPEED;
+    if (glfwGetKey(window, GLFW_KEY_R) == GLFW_PRESS) {
+        fetchPlanesOnDemand();
+}
+}
+
+void Application::handleMouse(vec2 pos)
+{
+    if (firstClick)
+    {
+        lastXY = pos;
+        firstClick = false;
+    }
+
+    vec2 offset = lastXY - pos;
+    lastXY = pos;
+    offset *= SENSITIVITY;
+    
+    quat qYaw = glm::angleAxis(glm::radians(-offset.x), vec3(0.0f, 1.0f, 0.0f));
+    vec3 right = glm::normalize(glm::cross(cameraFront, CAMERA_UP));
+    quat qPitch = glm::angleAxis(glm::radians(offset.y), right);
+
+    quat totalRotation = qPitch * qYaw;
+    cameraFront = glm::normalize(totalRotation * cameraFront);
 }
