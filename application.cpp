@@ -1,5 +1,7 @@
 #include "application.h"
 #include "webgpu/webgpu_cpp.h"
+#include <cstdint>
+#include <emscripten/emscripten.h>
 
 void Application::initializeBuffers()
 {
@@ -181,7 +183,7 @@ void Application::onDeviceReady(wgpu::RequestDeviceStatus status, wgpu::Device d
     fetchPlanesOnDemand();
     initializeBuffers();
     initializePipeline();
-
+    fetchCooldown = LONG_FETCH_COOLDOWN;
     onWindowResize(0, nullptr, this);
     emscripten_set_resize_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, this, EM_TRUE, onWindowResize);
 
@@ -196,16 +198,25 @@ void Application::renderFrame()
     glfwPollEvents();
     processInput();
 
+    double currentTime = emscripten_get_now();
+    if (lastFrameTime == 0.0) lastFrameTime = currentTime;
+
+    float dt = static_cast<float>((currentTime - lastFrameTime) / 1000.0);
+    lastFrameTime = currentTime;
+    if (dt > 0.1f) dt = 0.1f;
+    fetchCooldown -= dt;
+
+    if (fetchCooldown < 0.0) fetchPlanesOnDemand();
+
     mat4x4 V = glm::lookAt(cameraPos, cameraPos + cameraFront, CAMERA_UP);
     MyUniforms uniformValues {
         .projectionMatrix = projectionMatrix,
         .viewMatrix = V,
     };
     device.GetQueue().WriteBuffer(uniformBuffer, 0, &uniformValues, sizeof(MyUniforms));
-
     for (int i = 0; i < planesCount; i++)
     {
-        planes[i].fly();
+        planes[i].fly(dt);
         instanceData[i] = planes[i].getModelMatrix();
     }
  
@@ -269,17 +280,28 @@ void Application::fetchPlanesOnDemand()
 
 void Application::updatePlanes(const float* data, int sizeInBytes)
 {
+    uint32_t newBatchId = reinterpret_cast<const uint32_t*>(data)[0];
+    if (newBatchId == lastBatchId)
+    {
+        std::cout << "[Fetch] No change detected. Retry in 3 seconds..." << std::endl;
+        fetchCooldown = SHORT_FETCH_COOLDOWN;
+        return;
+    }
+
+    lastBatchId = newBatchId;
+    fetchCooldown = LONG_FETCH_COOLDOWN;
     planesCount = 0;
-    for (int i = 0; i < (sizeInBytes / (4 * sizeof(float))); i++)
+    for (int i = 0; i < ((sizeInBytes - HEADER_OFFSET) / (4 * sizeof(float))); i++)
     {
         Airplane plane{};
         plane.setFlightData(
-            {data[i * 4 + 0], data[i * 4 + 1]},
-            data[i * 4 + 2],
-            data[i * 4 + 3]);
+            {data[i * 4 + 1], data[i * 4 + 2]},
+            data[i * 4 + 3],
+            data[i * 4 + 4]);
         planes[i] = plane;
         planesCount++;
     }
+    std::cout << "[Fetch] New data loaded. New fetch in 2 minutes..." << std::endl;
 }
 
 void Application::onResize(uint32_t width, uint32_t height)

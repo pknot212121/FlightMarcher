@@ -36,6 +36,8 @@ async function getValidToken() {
     return accessToken;
 }
 
+let currentBatchId = 0;
+
 async function updateCacheFromOpenSky() {
     try {
         const token = await getValidToken();
@@ -44,8 +46,13 @@ async function updateCacheFromOpenSky() {
         });
 
         const states = response.data.states || [];
-        const buffer = Buffer.alloc(states.length * 16);
-        let offset = 0;
+
+        const HEADER_SIZE = 4;
+        const buffer = Buffer.alloc(HEADER_SIZE + states.length * 16);
+        currentBatchId++;
+
+        buffer.writeUint32LE(currentBatchId, 0);
+        let offset = HEADER_SIZE;
 
         for (const plane of states) {
             const lon = plane[5] ?? 0.0;

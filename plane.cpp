@@ -10,13 +10,13 @@ void Airplane::setFlightData(vec2 latLon, float velocity, float heading)
     changed = true;
 }
 
-void Airplane::fly()
+void Airplane::fly(float dt)
 {
     float latRad = glm::radians(latLon.x);
     float lonRad = glm::radians(latLon.y);
     float headingRad = glm::radians(heading);
-    float d = velocity / FRAMES / 1000.0f;
-    float q = d / PLANET_RADIUS;
+    float d = velocity * dt;
+    float q = d / REAL_EARTH_RADIUS_METERS;
     float lat2Rad = glm::asin(sin(latRad) * cos(q) + cos(latRad) * sin(q) * cos(headingRad));
     float y = std::sin(headingRad) * std::sin(q) * std::cos(latRad);
     float x = std::cos(q) - std::sin(latRad) * std::sin(lat2Rad);

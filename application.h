@@ -1,3 +1,4 @@
+#include <cstdint>
 #include <memory>
 #include <GLFW/glfw3.h>
 #include "misc.h"
@@ -18,6 +19,9 @@ constexpr vec3 CAMERA_UP {0.0f, 1.0f, 0.0f};
 constexpr float FOV = 1.047198f;
 constexpr uint32_t MAX_PLANES = 30000;
 constexpr float SENSITIVITY = 0.1f;
+constexpr float LONG_FETCH_COOLDOWN = 122.0f;
+constexpr float SHORT_FETCH_COOLDOWN = 3.0f;
+constexpr uint32_t HEADER_OFFSET = 4;
 
 using glm::quat;
 
@@ -68,5 +72,9 @@ class Application
         vec3 cameraFront {0.0f, 0.0f, -1.0f};
         vec2 yawPitch {-90.0f, 0.0f};
         vec2 lastXY = {WIN_WIDTH / 2.0f, WIN_HEIGHT / 2.0f};
+
+        double lastFrameTime = 0.0;
+        uint32_t lastBatchId = 0;
+        double fetchCooldown = 0.0;
         bool firstClick = true;
 };

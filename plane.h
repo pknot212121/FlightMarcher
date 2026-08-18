@@ -8,15 +8,15 @@ using glm::vec4;
 using glm::mat4;
 
 constexpr float PLANET_RADIUS = 100.0f;
+constexpr float REAL_EARTH_RADIUS_METERS = 6'371'000.0f;
 constexpr vec3 WORLD_NORTH {0.0f, 1.0f, 0.0f};
-constexpr float FRAMES = 60.0;
 
 class Airplane
 {
     public:
         Airplane(){};
         void setFlightData(vec2 latLon, float velocity, float heading);
-        void fly();
+        void fly(float dt);
         void fly(vec2 delta);
         void setScale(float scale);
         mat4 getModelMatrix();
